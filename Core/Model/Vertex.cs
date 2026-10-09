@@ -5,7 +5,7 @@ namespace PolygonStudio.Core.Model;
 public sealed class Vertex
 {
     public Guid Id { get; } = Guid.NewGuid();
-    public Point2D Position { get; }
+    public Point2D Position { get; internal set; }
 
     public Vertex(Point2D position)
     {
