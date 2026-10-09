@@ -9,4 +9,8 @@
     <RootNamespace>PolygonStudio.Core</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Folder Include="Services\" />
+  </ItemGroup>
+
 </Project>

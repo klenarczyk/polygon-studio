@@ -31,5 +31,8 @@
 
   <ItemGroup>
     <Folder Include="Assets\" />
+    <Folder Include="Controls\" />
+    <Folder Include="Input\" />
+    <Folder Include="Rendering\" />
   </ItemGroup>
 </Project>
