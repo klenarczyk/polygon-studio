@@ -14,8 +14,7 @@
         <viewModels:MainViewModel />
     </Design.DataContext>
 
-    <Grid RowDefinitions="100,*">
-        <Button Grid.Row="0" VerticalAlignment="Top" Click="Button_OnClick">Switch</Button>
-        <controls:PolygonCanvas x:Name="Canvas" Grid.Row="1"/>
+    <Grid>
+        <controls:PolygonCanvas x:Name="Canvas"/>
     </Grid>
 </Window>
