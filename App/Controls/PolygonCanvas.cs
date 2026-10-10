@@ -6,13 +6,16 @@ using Avalonia.Input;
 using Avalonia.Media;
 using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model;
+using PolygonStudio.Core.Model.Geometries;
 using PolygonStudio.Core.Services;
+using LineGeometry = PolygonStudio.Core.Model.Geometries.LineGeometry;
 
 namespace PolygonStudio.App.Controls;
 
 public sealed class PolygonCanvas : Control
 {
     private const double VertexRadius = 5.0;
+    private const double ControlPointSize = 8.0;
     private const double HitRadius = 10.0;
     private const double Padding = 30.0;
 
@@ -36,6 +39,7 @@ public sealed class PolygonCanvas : Control
         
         var edgePen = new Pen(Brushes.Black, 2);
         var vertexPen = new Pen(Brushes.Black, 2);
+        var controlPen = new Pen(Brushes.SlateGray, 1, DashStyle.Dash);
         
         // Edges
         foreach (var polygon in Scene.Polygons)
@@ -46,12 +50,45 @@ public sealed class PolygonCanvas : Control
                 var to = polygon.Vertices.FirstOrDefault(v => v.Id == edge.ToVertexId);
                 
                 if (from is null || to is null) continue;
+
+                var start = transform.ToScreen(from.Position);
+                var end = transform.ToScreen(to.Position);
                 
-                context.DrawLine(
-                    edgePen, 
-                    transform.ToScreen(from.Position), 
-                    transform.ToScreen(to.Position)
-                );
+                switch (edge.Geometry) // TODO: Add an edge drawing interface later on
+                {
+                    case LineGeometry:
+                        context.DrawLine(edgePen, start, end);
+                        break;
+                    
+                    case CubicBezierGeometry bezier:
+                        DrawBezier(
+                            context,
+                            edgePen, controlPen,
+                            transform,
+                            from.Position, to.Position,
+                            bezier);
+                        break;
+                }
+            }
+        }
+        
+        // Control points
+        foreach (var polygon in Scene.Polygons)
+        {
+            foreach (var edge in polygon.Edges)
+            {
+                if (edge.Geometry is not CubicBezierGeometry bezier) // TODO: Find a more elegant solution for this
+                    continue;
+                
+                DrawControlPoint(
+                    context,
+                    transform.ToScreen(bezier.ControlPoint1),
+                    false);
+                
+                DrawControlPoint(
+                    context,
+                    transform.ToScreen(bezier.ControlPoint2),
+                    false);
             }
         }
         
@@ -223,5 +260,70 @@ public sealed class PolygonCanvas : Control
                 MinX + (point.X - Left) / Scale,
                 MaxY - (point.Y - Top) / Scale
             );
+    }
+    
+    // TODO: Move out of PolygonCanvas
+    private static void DrawBezier(
+        DrawingContext context,
+        Pen curvePen, Pen controlPen,
+        ViewTransform transform,
+        Point2D start, Point2D end,
+        CubicBezierGeometry bezier)
+    {
+        // Control polygon
+        var p0 = transform.ToScreen(start);
+        var p1 = transform.ToScreen(bezier.ControlPoint1);
+        var p2 = transform.ToScreen(bezier.ControlPoint2);
+        var p3 = transform.ToScreen(end);
+        
+        context.DrawLine(controlPen, p0, p1);
+        context.DrawLine(controlPen, p1, p2);
+        context.DrawLine(controlPen, p2, p3);
+        context.DrawLine(controlPen, p3, p0);
+        
+        // Curve
+        const int steps = 64;
+        var previous = p0;
+
+        for (var i = 1; i <= steps; i++)
+        {
+            double t = (double)i / steps;
+            double u = 1.0 - t;
+
+            double x =
+                u * u * u * start.X +
+                3 * u * u * t * bezier.ControlPoint1.X +
+                3 * u * t * t * bezier.ControlPoint2.X +
+                t * t * t * end.X;
+
+            double y =
+                u * u * u * start.Y +
+                3 * u * u * t * bezier.ControlPoint1.Y +
+                3 * u * t * t * bezier.ControlPoint2.Y +
+                t * t * t * end.Y;
+
+            Point current = transform.ToScreen(new Point2D(x, y));
+            context.DrawLine(curvePen, previous, current);
+            previous = current;
+        }
+    }
+
+    private static void DrawControlPoint(
+        DrawingContext context,
+        Point screenPoint,
+        bool isSelected)
+    {
+        const double halfSize = ControlPointSize / 2.0;
+
+        var rect = new Rect(
+            screenPoint.X - halfSize,
+            screenPoint.Y - halfSize,
+            ControlPointSize,
+            ControlPointSize);
+        
+        context.DrawRectangle(
+            isSelected ? Brushes.LightBlue : Brushes.White,
+            new Pen(Brushes.SlateGray, 1.5),
+            rect);
     }
 }
