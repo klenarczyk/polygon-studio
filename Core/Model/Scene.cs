@@ -1,4 +1,6 @@
 ﻿using PolygonStudio.Core.Constraints;
+using PolygonStudio.Core.Geometry;
+using PolygonStudio.Core.Model.Geometries;
 
 namespace PolygonStudio.Core.Model;
 
@@ -46,7 +48,13 @@ public class Scene
 
     private void Initialize()
     {
-        _polygons.Add(new Polygon());
+        var polygon1 = new Polygon();
+        polygon1.Edges[0].Geometry = new CubicBezierGeometry(
+            new Point2D(0.0, 0.0),
+            new Point2D(0.5, 0.5)
+        );
+        
+        _polygons.Add(polygon1);
         // _polygons.Add(new Polygon());
     }
     

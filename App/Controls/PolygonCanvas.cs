@@ -19,8 +19,11 @@ public sealed class PolygonCanvas : Control
     private const double HitRadius = 10.0;
     private const double Padding = 30.0;
 
+    private DragTarget _dragTarget = DragTarget.None;
     private Guid? _draggedPolygonId;
     private Guid? _draggedVertexId;
+    private Guid? _draggedEdgeId;
+    private int _draggedControlPointIdx = -1;
     
     private ViewTransform? _viewTransform;
     
@@ -77,18 +80,21 @@ public sealed class PolygonCanvas : Control
         {
             foreach (var edge in polygon.Edges)
             {
-                if (edge.Geometry is not CubicBezierGeometry bezier) // TODO: Find a more elegant solution for this
+                if (edge.Geometry is not CubicBezierGeometry bezier)
                     continue;
+
+                bool isControlSelected = _dragTarget == DragTarget.BezierControlPoint &&
+                                         _draggedEdgeId == edge.Id;
                 
                 DrawControlPoint(
                     context,
                     transform.ToScreen(bezier.ControlPoint1),
-                    false);
+                    isControlSelected && _draggedControlPointIdx == 0);
                 
                 DrawControlPoint(
                     context,
                     transform.ToScreen(bezier.ControlPoint2),
-                    false);
+                    isControlSelected && _draggedControlPointIdx == 1);
             }
         }
         
@@ -128,7 +134,7 @@ public sealed class PolygonCanvas : Control
         double bestDistSquared = HitRadius * HitRadius;
         Guid? foundPolygonId = null;
         Guid? foundVertexId = null;
-
+        
         foreach (var polygon in Scene.Polygons)
         {
             foreach (var vertex in polygon.Vertices)
@@ -146,23 +152,64 @@ public sealed class PolygonCanvas : Control
             }
         }
 
-        if (foundPolygonId is null || foundVertexId is null) return;
+        if (foundPolygonId is not null && foundVertexId is not null)
+        {
+            _dragTarget = DragTarget.Vertex;
+            _draggedPolygonId = foundPolygonId;
+            _draggedVertexId = foundVertexId;
+            _draggedEdgeId = null;
+            _draggedControlPointIdx = -1;
+        
+            e.Pointer.Capture(this);
+            e.Handled = true;
+        
+            InvalidateVisual();
+        }
+        
+        foreach (var polygon in Scene.Polygons)
+        {
+            foreach (var edge in polygon.Edges)
+            {
+                if (edge.Geometry is not CubicBezierGeometry bezier)
+                    continue;
 
-        _draggedPolygonId = foundPolygonId;
-        _draggedVertexId = foundVertexId;
-        
-        e.Pointer.Capture(this);
-        e.Handled = true;
-        
-        InvalidateVisual();
+                Point[] controlPoints =
+                [
+                    transform.ToScreen(bezier.ControlPoint1),
+                    transform.ToScreen(bezier.ControlPoint2)
+                ];
+
+                for (var i = 0; i < controlPoints.Length; i++)
+                {
+                    var point = controlPoints[i];
+
+                    double dx = point.X - pointerPos.X;
+                    double dy = point.Y - pointerPos.Y;
+
+                    if (dx * dx + dy * dy > HitRadius * HitRadius)
+                        continue;
+
+                    _dragTarget = DragTarget.BezierControlPoint;
+                    _draggedPolygonId = polygon.Id;
+                    _draggedEdgeId = edge.Id;
+                    _draggedControlPointIdx = i;
+                    _draggedVertexId = null;
+
+                    e.Pointer.Capture(this);
+                    e.Handled = true;
+                    InvalidateVisual();
+                    return;
+                }
+            }
+        }
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
 
-        if (_draggedPolygonId is not { } polygonId ||
-            _draggedVertexId is not { } vertexId ||
+        if (_dragTarget == DragTarget.None ||
+            _draggedPolygonId is not { } polygonId ||
             _viewTransform is not { } transform ||
             Editor is null)
         {
@@ -172,7 +219,22 @@ public sealed class PolygonCanvas : Control
         var screenPos = e.GetPosition(this);
         var worldPos = transform.ToWorld(screenPos);
         
-        if (Editor.MoveVertex(polygonId, vertexId, worldPos))
+        bool changed = _dragTarget switch
+        {
+            DragTarget.Vertex when _draggedVertexId is { } vertexId =>
+                Editor.MoveVertex(polygonId, vertexId, worldPos),
+
+            DragTarget.BezierControlPoint when _draggedEdgeId is { } edgeId =>
+                Editor.MoveBezierControlPoint(
+                    polygonId,
+                    edgeId,
+                    _draggedControlPointIdx,
+                    worldPos),
+
+            _ => false
+        };
+
+        if (changed)
             InvalidateVisual();
 
         e.Handled = true;
@@ -182,12 +244,15 @@ public sealed class PolygonCanvas : Control
     {
         base.OnPointerReleased(e);
 
-        if (_draggedVertexId is null) return;
+        if (_dragTarget == DragTarget.None) return;
 
         e.Pointer.Capture(null);
 
+        _dragTarget = DragTarget.None;
         _draggedPolygonId = null;
         _draggedVertexId = null;
+        _draggedEdgeId = null;
+        _draggedControlPointIdx = -1;
         
         InvalidateVisual();
         e.Handled = true;
@@ -242,26 +307,6 @@ public sealed class PolygonCanvas : Control
         return new ViewTransform(scale, left, top, minX, maxY);
     }
     
-    private readonly record struct ViewTransform(
-        double Scale,   // Screen / World
-        double Left,    // Horizontal offset
-        double Top,     // Vertical offset
-        double MinX,    // Min world x
-        double MaxY)    // Max world y
-    {
-        public Point ToScreen(Point2D point) =>
-            new(
-                Left + (point.X - MinX) * Scale,
-                Top + (MaxY - point.Y) * Scale
-            );
-
-        public Point2D ToWorld(Point point) =>
-            new(
-                MinX + (point.X - Left) / Scale,
-                MaxY - (point.Y - Top) / Scale
-            );
-    }
-    
     // TODO: Move out of PolygonCanvas
     private static void DrawBezier(
         DrawingContext context,
@@ -302,7 +347,7 @@ public sealed class PolygonCanvas : Control
                 3 * u * t * t * bezier.ControlPoint2.Y +
                 t * t * t * end.Y;
 
-            Point current = transform.ToScreen(new Point2D(x, y));
+            var current = transform.ToScreen(new Point2D(x, y));
             context.DrawLine(curvePen, previous, current);
             previous = current;
         }
@@ -325,5 +370,34 @@ public sealed class PolygonCanvas : Control
             isSelected ? Brushes.LightBlue : Brushes.White,
             new Pen(Brushes.SlateGray, 1.5),
             rect);
+    }
+    
+    // ---
+    
+    private readonly record struct ViewTransform(
+        double Scale,   // Screen / World
+        double Left,    // Horizontal offset
+        double Top,     // Vertical offset
+        double MinX,    // Min world x
+        double MaxY)    // Max world y
+    {
+        public Point ToScreen(Point2D point) =>
+            new(
+                Left + (point.X - MinX) * Scale,
+                Top + (MaxY - point.Y) * Scale
+            );
+
+        public Point2D ToWorld(Point point) =>
+            new(
+                MinX + (point.X - Left) / Scale,
+                MaxY - (point.Y - Top) / Scale
+            );
+    }
+
+    private enum DragTarget
+    {
+        None,
+        Vertex,
+        BezierControlPoint
     }
 }
