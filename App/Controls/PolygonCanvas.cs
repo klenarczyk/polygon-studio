@@ -71,6 +71,15 @@ public sealed class PolygonCanvas : Control
                             from.Position, to.Position,
                             bezier);
                         break;
+                    
+                    case CircularArcGeometry arc:
+                        DrawCircularArc(
+                            context,
+                            edgePen,
+                            transform,
+                            from.Position, to.Position,
+                            arc);
+                        break;
                 }
             }
         }
@@ -371,7 +380,46 @@ public sealed class PolygonCanvas : Control
             new Pen(Brushes.SlateGray, 1.5),
             rect);
     }
-    
+
+    private static void DrawCircularArc(
+        DrawingContext context,
+        Pen pen,
+        ViewTransform transform,
+        Point2D start, Point2D end,
+        CircularArcGeometry arc)
+    {
+        if (!CircularArcMath.TryGetParameters(start, end, arc, out var parameters))
+            return;
+
+        double startAngle = parameters.StartAngleRadians;
+        double radius = parameters.Radius;
+        double sweep = parameters.SweepAngleRadians;
+        var center = parameters.Center;
+
+        if (radius < 1e-9) return;
+
+        const double maxAngleStep = Math.PI / 64.0;
+        
+        int steps = Math.Max(2, (int)Math.Ceiling(Math.Abs(sweep) / maxAngleStep));
+        var previous = transform.ToScreen(start);
+
+        for (var i = 1; i <= steps; i++)
+        {
+            double t = (double)i / steps;
+            double angle = startAngle + sweep * t;
+
+            var worldPoint = new Point2D(
+                center.X + radius * Math.Cos(angle),
+                center.Y + radius * Math.Sin(angle));
+
+            var current = i == steps
+                ? transform.ToScreen(end)
+                : transform.ToScreen(worldPoint);
+
+            context.DrawLine(pen, previous, current);
+            previous = current;
+        }
+    }
     // ---
     
     private readonly record struct ViewTransform(

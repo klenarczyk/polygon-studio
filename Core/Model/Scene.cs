@@ -49,10 +49,13 @@ public class Scene
     private void Initialize()
     {
         var polygon1 = new Polygon();
+        
         polygon1.Edges[0].Geometry = new CubicBezierGeometry(
             new Point2D(0.0, 0.0),
             new Point2D(0.5, 0.5)
         );
+
+        polygon1.Edges[1].Geometry = CircularArcGeometry.CreateSemicircle(false);
         
         _polygons.Add(polygon1);
         // _polygons.Add(new Polygon());
