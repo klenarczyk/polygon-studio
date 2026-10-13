@@ -36,4 +36,24 @@ public sealed class EditorService(Scene scene)
         edge.Geometry = bezier.WithControlPoint(controlPointIndex, newPosition);
         return true;
     }
+
+    public bool SetEdgeGeometry(Guid polygonId, Guid edgeId, Type geometryType)
+    {
+        var polygon = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);
+        var edge = polygon?.Edges.FirstOrDefault(e => e.Id == edgeId);
+
+        if (polygon is null || edge is null) return false;
+
+        if (geometryType == typeof(CubicBezierGeometry) && edge.Geometry is CubicBezierGeometry)
+            return true;
+
+        if (geometryType == typeof(CircularArcGeometry) && edge.Geometry is CircularArcGeometry)
+            return true;
+
+        var start = polygon.Vertices.First(v => v.Id == edge.FromVertexId).Position;
+        var end = polygon.Vertices.First(v => v.Id == edge.ToVertexId).Position;
+
+        edge.Geometry = EdgeGeometryFactory.CreateDefault(start, end, geometryType);
+        return true;
+    }
 }
