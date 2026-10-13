@@ -37,6 +37,31 @@ public sealed class EditorService(Scene scene)
         return true;
     }
 
+    public bool SplitEdge(Guid polygonId, Guid edgeId)
+    {
+        var polygon = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);
+        var edge = polygon?.Edges.FirstOrDefault(e => e.Id == edgeId);
+
+        if (polygon is null || edge is null) return false;
+        
+        var start = polygon.Vertices.First(v => v.Id == edge.FromVertexId).Position;
+        var end = polygon.Vertices.First(v => v.Id == edge.ToVertexId).Position;
+        
+        var newVertexPosition = new Point2D((end.X + start.X) / 2, (end.Y + start.Y) / 2);
+        var newVertex = new Vertex(newVertexPosition);
+        
+        polygon.AddVertex(newVertex);
+
+        var edge1 = new Edge(edge.FromVertexId, newVertex.Id);
+        var edge2 = new Edge(newVertex.Id, edge.ToVertexId);
+        
+        polygon.AddEdge(edge1);
+        polygon.AddEdge(edge2);
+        polygon.RemoveEdge(edge.Id);
+        
+        return true;
+    }
+    
     public bool SetEdgeGeometry(Guid polygonId, Guid edgeId, Type geometryType)
     {
         var polygon = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);

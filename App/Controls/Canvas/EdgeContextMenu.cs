@@ -19,14 +19,51 @@ public static class EdgeContextMenu
             Placement = PlacementMode.Pointer
         };
 
-        AddItem("Line", typeof(LineGeometry));
-        AddItem("Cubic Bezier", typeof(CubicBezierGeometry));
-        AddItem("Circular arc", typeof(CircularArcGeometry));
+        // ---
         
+        var geometryMenu = new MenuItem()
+        {
+            Header = "Geometry"
+        };
+        
+        AddGeometryItem("Line", typeof(LineGeometry));
+        AddGeometryItem("Cubic Bezier", typeof(CubicBezierGeometry));
+        AddGeometryItem("Circular arc", typeof(CircularArcGeometry));
+        
+        menu.Items.Add(geometryMenu);
+        
+        // ---
+        
+        var constraintMenu = new MenuItem()
+        {
+            Header = "Constraints"
+        };
+        
+        constraintMenu.Items.Add(new Separator());
+        
+        menu.Items.Add(constraintMenu);
+        menu.Items.Add(new Separator());
+        
+        // ---
+        
+        var splitItem = new MenuItem
+        {
+            Header = "Split edge"
+        };
+
+        splitItem.Click += (_, _) =>
+        {
+            if (editor.SplitEdge(polygonId, edgeId))
+                invalidateVisual();
+        };
+
+        menu.Items.Add(splitItem);
         menu.Open(owner);
         return;
 
-        void AddItem(string label, Type geometryType)
+        // ---
+        
+        void AddGeometryItem(string label, Type geometryType)
         {
             bool isCurrent = currentGeometry.GetType() == geometryType;
 
@@ -39,12 +76,10 @@ public static class EdgeContextMenu
             item.Click += (_, _) =>
             {
                 if (editor.SetEdgeGeometry(polygonId, edgeId, geometryType))
-                {
                     invalidateVisual();
-                }
             };
 
-            menu.Items.Add(item);
+            geometryMenu.Items.Add(item);
         }
     }
 }

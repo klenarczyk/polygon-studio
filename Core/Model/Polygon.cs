@@ -23,7 +23,10 @@ public sealed class Polygon
     
     internal void AddVertex(Vertex vertex)
     {
-        throw new NotImplementedException();
+        if (_vertices.FirstOrDefault(v => v.Id == vertex.Id) != null)
+            return;
+        
+        _vertices.Add(vertex);
     }
     
     internal bool RemoveVertex(Guid id)
@@ -33,12 +36,15 @@ public sealed class Polygon
     
     internal void AddEdge(Edge edge)
     {
-        throw new NotImplementedException();
+        if (_edges.FirstOrDefault(e => e.Id == edge.Id) != null)
+            return;
+        
+        _edges.Add(edge);
     }
 
     internal bool RemoveEdge(Guid id)
     {
-        throw new NotImplementedException();
+        int numRemoved = _edges.RemoveAll(e => e.Id == id);
+        return numRemoved > 0;
     }
-
 }
