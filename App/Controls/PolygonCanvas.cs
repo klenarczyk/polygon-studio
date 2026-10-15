@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using PolygonStudio.App.Controls.Canvas;
+using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model;
 using PolygonStudio.Core.Model.Geometries;
 using PolygonStudio.Core.Services;
@@ -28,6 +29,7 @@ public sealed class PolygonCanvas : Control
     private Guid? _draggedVertexId;
     private Guid? _draggedEdgeId;
     private int _draggedControlPointIdx = -1;
+    private Point2D _previousPointerPosition;
     
     private ViewTransform? _viewTransform;
     
@@ -147,13 +149,7 @@ public sealed class PolygonCanvas : Control
             return;
         }
         
-        if (_selectedVertexId is not null || _selectedEdgeId is not null)
-        {
-            _selectedPolygonId = null;
-            _selectedVertexId = null;
-            _selectedEdgeId = null;
-            InvalidateVisual();
-        }
+        ResetSelection();
         
         base.OnPointerPressed(e);
 
@@ -168,6 +164,8 @@ public sealed class PolygonCanvas : Control
         EnsureViewTransform();
         if (_viewTransform is not { } transform) return;
 
+        _previousPointerPosition = transform.ToWorld(pointerPos);
+        
         double bestDistSquared = HitRadius * HitRadius;
         Guid? foundPolygonId = null;
         Guid? foundVertexId = null;
@@ -201,6 +199,7 @@ public sealed class PolygonCanvas : Control
             e.Handled = true;
         
             InvalidateVisual();
+            return;
         }
         
         foreach (var polygon in Scene.Polygons)
@@ -234,10 +233,24 @@ public sealed class PolygonCanvas : Control
 
                     e.Pointer.Capture(this);
                     e.Handled = true;
+                    
                     InvalidateVisual();
                     return;
                 }
             }
+
+            var hitTester = new CanvasHitTester(Scene, transform);
+            var edgeHit = hitTester.FindEdgeAt(pointerPos);
+            
+            if (edgeHit is not { } hitRes) 
+                return;
+
+            _dragTarget = DragTarget.Polygon;
+            _draggedPolygonId = hitRes.Polygon.Id;
+            _previousPointerPosition = transform.ToWorld(pointerPos);
+            
+            e.Pointer.Capture(this);
+            e.Handled = true;
         }
     }
 
@@ -258,6 +271,14 @@ public sealed class PolygonCanvas : Control
         
         bool changed = _dragTarget switch
         {
+            DragTarget.Polygon => 
+                Editor.MovePolygon(
+                    polygonId,
+                    new Point2D(
+                        worldPos.X - _previousPointerPosition.X, 
+                        worldPos.Y - _previousPointerPosition.Y
+                    )),
+            
             DragTarget.Vertex when _draggedVertexId is { } vertexId =>
                 Editor.MoveVertex(polygonId, vertexId, worldPos),
 
@@ -274,6 +295,7 @@ public sealed class PolygonCanvas : Control
         if (changed)
             InvalidateVisual();
 
+        _previousPointerPosition = worldPos;
         e.Handled = true;
     }
 
@@ -290,6 +312,7 @@ public sealed class PolygonCanvas : Control
         _draggedVertexId = null;
         _draggedEdgeId = null;
         _draggedControlPointIdx = -1;
+        _previousPointerPosition = default;
         
         InvalidateVisual();
         e.Handled = true;
@@ -305,13 +328,7 @@ public sealed class PolygonCanvas : Control
         var hitTester = new CanvasHitTester(Scene, transform);
         var pointerPos = e.GetPosition(this);
         
-        if (_selectedVertexId is not null || _selectedEdgeId is not null)
-        {
-            _selectedPolygonId = null;
-            _selectedVertexId = null;
-            _selectedEdgeId = null;
-            InvalidateVisual();
-        }
+        ResetSelection();
         
         var vertexHit = hitTester.FindVertexAt(pointerPos);
         if (vertexHit is { } vertexRes)
@@ -346,6 +363,8 @@ public sealed class PolygonCanvas : Control
                 edgeRes.Edge.Geometry,
                 InvalidateVisual
             );   
+            
+            e.Handled = true;
         }
     }
     
@@ -400,9 +419,26 @@ public sealed class PolygonCanvas : Control
     
     // ---
 
+    private void ResetSelection()
+    {
+        if (_selectedPolygonId is null && 
+            _selectedVertexId is null && 
+            _selectedEdgeId is null)
+        {
+            return;
+        }
+        
+        _selectedPolygonId = null;
+        _selectedVertexId = null;
+        _selectedEdgeId = null;
+        
+        InvalidateVisual();
+    }
+    
     private enum DragTarget
     {
         None,
+        Polygon,
         Vertex,
         BezierControlPoint
     }

@@ -106,4 +106,39 @@ public sealed class EditorService(Scene scene)
         
         return true;
     }
+    
+    public bool MovePolygon(Guid polygonId, Point2D delta)
+    {
+        var polygon = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);
+
+        if (polygon is null)
+            return false;
+
+        foreach (var vertex in polygon.Vertices)
+        {
+            vertex.Position = new Point2D(
+                vertex.Position.X + delta.X,
+                vertex.Position.Y + delta.Y
+            );
+        }
+
+        foreach (var edge in polygon.Edges)
+        {
+            if (edge.Geometry is not CubicBezierGeometry bezier) continue;
+            
+            var control1 = new Point2D(
+                bezier.ControlPoint1.X + delta.X,
+                bezier.ControlPoint1.Y + delta.Y
+            );
+
+            var control2 = new Point2D(
+                bezier.ControlPoint2.X + delta.X,
+                bezier.ControlPoint2.Y + delta.Y
+            );
+                
+            edge.Geometry = new CubicBezierGeometry(control1, control2);
+        }
+
+        return true;
+    }
 }
