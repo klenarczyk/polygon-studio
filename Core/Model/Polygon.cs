@@ -31,7 +31,11 @@ public sealed class Polygon
     
     internal bool RemoveVertex(Guid id)
     {
-        throw new NotImplementedException();
+        if (_vertices.Count <= 3)
+            return false;
+        
+        var vertex = _vertices.FirstOrDefault(v => v.Id == id);
+        return vertex is not null && _vertices.Remove(vertex);
     }
     
     internal void AddEdge(Edge edge)
@@ -44,7 +48,7 @@ public sealed class Polygon
 
     internal bool RemoveEdge(Guid id)
     {
-        int numRemoved = _edges.RemoveAll(e => e.Id == id);
-        return numRemoved > 0;
+        var edge = _edges.FirstOrDefault(e => e.Id == id);
+        return edge is not null && _edges.Remove(edge);
     }
 }

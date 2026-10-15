@@ -20,6 +20,7 @@ public sealed class PolygonCanvas : Control
     private const double Padding = 30.0;
 
     private Guid? _selectedPolygonId;
+    private Guid? _selectedVertexId;
     private Guid? _selectedEdgeId;
     
     private DragTarget _dragTarget = DragTarget.None;
@@ -44,7 +45,7 @@ public sealed class PolygonCanvas : Control
         if (_viewTransform is not { } transform) return;
         
         var edgePen = new Pen(Brushes.Black, 2);
-        var selectedEdgePen = new Pen(Brushes.Coral, 2);
+        var selectedEdgePen = new Pen(Brushes.LightCoral, 2);
         var vertexPen = new Pen(Brushes.Black, 2);
         var controlPen = new Pen(Brushes.SlateGray, 1, DashStyle.Dash);
         
@@ -122,10 +123,14 @@ public sealed class PolygonCanvas : Control
             foreach (var vertex in polygon.Vertices)
             {
                 var point = transform.ToScreen(vertex.Position);
-                bool isSelected = _draggedVertexId == vertex.Id;
+                bool isSelected = _selectedVertexId == vertex.Id || _draggedVertexId == vertex.Id;
+                
+                var currentVertexBrush = isSelected 
+                    ? Brushes.LightCoral
+                    : Brushes.White;
                 
                 context.DrawEllipse(
-                    isSelected ? Brushes.LightBlue : Brushes.White,
+                    currentVertexBrush,
                     vertexPen,
                     point,
                     VertexRadius,
@@ -142,9 +147,10 @@ public sealed class PolygonCanvas : Control
             return;
         }
         
-        if (_selectedEdgeId is not null)
+        if (_selectedVertexId is not null || _selectedEdgeId is not null)
         {
             _selectedPolygonId = null;
+            _selectedVertexId = null;
             _selectedEdgeId = null;
             InvalidateVisual();
         }
@@ -297,25 +303,50 @@ public sealed class PolygonCanvas : Control
             return;
 
         var hitTester = new CanvasHitTester(Scene, transform);
-        var hit = hitTester.FindEdgeAt(e.GetPosition(this));
+        var pointerPos = e.GetPosition(this);
         
-        if (hit is not { } res) 
+        if (_selectedVertexId is not null || _selectedEdgeId is not null)
+        {
+            _selectedPolygonId = null;
+            _selectedVertexId = null;
+            _selectedEdgeId = null;
+            InvalidateVisual();
+        }
+        
+        var vertexHit = hitTester.FindVertexAt(pointerPos);
+        if (vertexHit is { } vertexRes)
+        {
+            _selectedPolygonId = vertexRes.Polygon.Id;
+            _selectedVertexId = vertexRes.Vertex.Id;
+            
+            InvalidateVisual();
+            
+            VertexContextMenu.Show(
+                this,
+                Editor,
+                vertexRes.Polygon.Id, vertexRes.Vertex.Id,
+                InvalidateVisual);
+            
+            e.Handled = true;
             return;
-
-        _selectedPolygonId = res.Polygon.Id;
-        _selectedEdgeId = res.Edge.Id;
+        }
         
-        InvalidateVisual();
-        
-        EdgeContextMenu.Show(
-            this,
-            Editor,
-            res.Polygon.Id, res.Edge.Id,
-            res.Edge.Geometry,
-            InvalidateVisual
-        );
-
-        e.Handled = true;
+        var edgeHit = hitTester.FindEdgeAt(pointerPos);
+        if (edgeHit is { } edgeRes)
+        {
+            _selectedPolygonId = edgeRes.Polygon.Id;
+            _selectedEdgeId = edgeRes.Edge.Id;
+            
+            InvalidateVisual();
+            
+            EdgeContextMenu.Show(
+                this,
+                Editor,
+                edgeRes.Polygon.Id, edgeRes.Edge.Id,
+                edgeRes.Edge.Geometry,
+                InvalidateVisual
+            );   
+        }
     }
     
     // ---

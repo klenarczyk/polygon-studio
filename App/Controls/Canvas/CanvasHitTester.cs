@@ -9,8 +9,35 @@ namespace PolygonStudio.App.Controls.Canvas;
 public sealed class CanvasHitTester(
     Scene scene, 
     ViewTransform transform, 
+    double vertexHitTolerance = 10.0,
     double edgeHitTolerance = 8.0)
 {
+    public (Polygon Polygon, Vertex Vertex)? FindVertexAt(Point screenPoint)
+    {
+        (Polygon Polygon, Vertex Vertex)? bestHit = null;
+        double bestDistanceSquared = vertexHitTolerance * vertexHitTolerance;
+
+        foreach (var polygon in scene.Polygons)
+        {
+            foreach (var vertex in polygon.Vertices)
+            {
+                var screenVertex = transform.ToScreen(vertex.Position);
+
+                double dx = screenPoint.X - screenVertex.X;
+                double dy = screenPoint.Y - screenVertex.Y;
+                double distanceSquared = dx * dx + dy * dy;
+
+                if (distanceSquared >= bestDistanceSquared)
+                    continue;
+
+                bestDistanceSquared = distanceSquared;
+                bestHit = (polygon, vertex);
+            }
+        }
+
+        return bestHit;
+    }
+    
     public (Polygon Polygon, Edge Edge)? FindEdgeAt(Point screenPoint)
     {
         (Polygon Polygon, Edge Edge)? bestHit = null;

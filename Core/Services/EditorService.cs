@@ -81,4 +81,29 @@ public sealed class EditorService(Scene scene)
         edge.Geometry = EdgeGeometryFactory.CreateDefault(start, end, geometryType);
         return true;
     }
+    
+    public bool RemoveVertex(Guid polygonId, Guid vertexId)
+    {
+        var polygon = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);
+        var vertex = polygon?.Vertices.FirstOrDefault(v => v.Id == vertexId);
+
+        if (polygon is null || vertex is null) 
+            return false;
+
+        if (polygon.Vertices.Count <= 3)
+            return false;
+        
+        var edge1 = polygon.Edges.First(e => e.ToVertexId == vertex.Id);
+        var edge2 = polygon.Edges.First(e => e.FromVertexId == vertex.Id);
+        
+        var newEdge = new Edge(edge1.FromVertexId, edge2.ToVertexId);
+        
+        polygon.AddEdge(newEdge);
+        
+        polygon.RemoveEdge(edge1.Id);
+        polygon.RemoveEdge(edge2.Id);
+        polygon.RemoveVertex(vertexId);
+        
+        return true;
+    }
 }
