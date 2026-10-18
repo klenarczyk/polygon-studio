@@ -26,7 +26,6 @@ public static class EdgeGeometryRenderer
         context.DrawLine(controlPen, p0, p1);
         context.DrawLine(controlPen, p1, p2);
         context.DrawLine(controlPen, p2, p3);
-        context.DrawLine(controlPen, p3, p0);
         
         // Curve
         DrawSampleCurve(

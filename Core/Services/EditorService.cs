@@ -1,4 +1,5 @@
-﻿using PolygonStudio.Core.Geometry;
+﻿using PolygonStudio.Core.Constraints;
+using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model;
 using PolygonStudio.Core.Model.Geometries;
 
@@ -7,17 +8,10 @@ namespace PolygonStudio.Core.Services;
 public sealed class EditorService(Scene scene)
 {
     public Scene Scene { get; } = scene;
+    private readonly ConstraintSolver _solver = new(scene);
 
-    public bool MoveVertex(Guid polygonId, Guid vertexId, Point2D newPosition)
-    {
-        var polygon = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);
-        var vertex = polygon?.Vertices.FirstOrDefault(v => v.Id == vertexId);
-        
-        if (vertex is null) return false;
-        
-        vertex.Position = newPosition;
-        return true;
-    }
+    public bool MoveVertex(Guid polygonId, Guid vertexId, Point2D newPosition) =>
+        _solver.TryMoveVertex(polygonId, vertexId, newPosition);
 
     public bool MoveBezierControlPoint(
         Guid polygonId,
@@ -57,6 +51,9 @@ public sealed class EditorService(Scene scene)
         
         polygon.AddEdge(edge1);
         polygon.AddEdge(edge2);
+        
+        Scene.RemoveConstraintsForEdge(polygonId, edge.Id);
+        
         polygon.RemoveEdge(edge.Id);
         
         return true;
@@ -100,6 +97,9 @@ public sealed class EditorService(Scene scene)
         
         polygon.AddEdge(newEdge);
         
+        Scene.RemoveConstraintsForEdge(polygonId, edge1.Id);
+        Scene.RemoveConstraintsForEdge(polygonId, edge2.Id);
+        
         polygon.RemoveEdge(edge1.Id);
         polygon.RemoveEdge(edge2.Id);
         polygon.RemoveVertex(vertexId);
@@ -141,4 +141,19 @@ public sealed class EditorService(Scene scene)
 
         return true;
     }
+    
+    public bool AddFixedEdgeLengthConstraint(Guid polygonId, Guid edgeId, double length)
+    {
+        var polygon = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);
+        var edge = polygon?.Edges.FirstOrDefault(e => e.Id == edgeId);
+        
+        if (polygon is null || edge is null) return false;
+
+        var constraint = new FixedEdgeLengthConstraint(polygonId, edgeId, length);
+
+        return Scene.TryAddConstraint(constraint); // TODO: Make the solver move the vertices accordingly
+    }
+
+    public bool RemoveConstraint(Guid constraintId) =>
+        Scene.RemoveConstraint(constraintId);
 }

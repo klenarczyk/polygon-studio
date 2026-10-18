@@ -6,7 +6,8 @@ public readonly record struct CircularArcParameters(
     Point2D Center,
     double Radius,
     double StartAngleRadians,
-    double SweepAngleRadians);
+    double SweepAngleRadians
+);
 
 public static class CircularArcMath
 {

@@ -12,9 +12,9 @@ public sealed class Polygon
 
     public Polygon()
     {
-        _vertices.Add(new Vertex(-1.0, 0.0));
-        _vertices.Add(new Vertex(0.0, 1.0));
-        _vertices.Add(new Vertex(1.0, 0.0));
+        _vertices.Add(new Vertex(-100.0, 0.0));
+        _vertices.Add(new Vertex(0.0, 100.0));
+        _vertices.Add(new Vertex(100.0, 0.0));
         
         _edges.Add(new Edge(_vertices[0].Id, _vertices[1].Id));
         _edges.Add(new Edge(_vertices[1].Id, _vertices[2].Id));

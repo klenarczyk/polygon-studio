@@ -1,10 +1,12 @@
 ﻿using System;
+using System.Globalization;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using PolygonStudio.App.Controls.Canvas;
+using PolygonStudio.Core.Constraints;
 using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model;
 using PolygonStudio.Core.Model.Geometries;
@@ -17,7 +19,6 @@ public sealed class PolygonCanvas : Control
 {
     private const double VertexRadius = 5.0;
     private const double HitRadius = 10.0;
-    
     private const double Padding = 30.0;
 
     private Guid? _selectedPolygonId;
@@ -92,6 +93,53 @@ public sealed class PolygonCanvas : Control
                             from.Position, to.Position,
                             arc);
                         break;
+                }
+                
+                if (Scene.Constraints
+                    .OfType<FixedEdgeLengthConstraint>()
+                    .Any(c => c.PolygonId == polygon.Id && c.EdgeId == edge.Id))
+                {
+                    var constraint = Scene.Constraints
+                        .OfType<FixedEdgeLengthConstraint>()
+                        .First(c => c.PolygonId == polygon.Id && c.EdgeId == edge.Id);
+
+                    var midpoint = new Point((start.X + end.X) / 2, (start.Y + end.Y) / 2);
+                    
+                    context.DrawEllipse(
+                        Brushes.White,
+                        new Pen(Brushes.DarkOrange, 1.5),
+                        midpoint,
+                        10,
+                        10
+                    );
+
+                    var label = new FormattedText(
+                        "L",
+                        CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight,
+                        Typeface.Default,
+                        11,
+                        Brushes.DarkOrange
+                    );
+
+                    context.DrawText(
+                        label,
+                        new Point(midpoint.X - label.Width / 2, midpoint.Y - label.Height / 2)
+                    );
+                    
+                    var lengthLabel = new FormattedText(
+                        constraint.Length.ToString("0.##", CultureInfo.CurrentCulture),
+                        CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight,
+                        Typeface.Default,
+                        11,
+                        Brushes.DarkOrange
+                    );
+
+                    context.DrawText(
+                        lengthLabel,
+                        new Point(midpoint.X + 12, midpoint.Y - lengthLabel.Height / 2)
+                    );
                 }
             }
         }
@@ -418,7 +466,7 @@ public sealed class PolygonCanvas : Control
     }
     
     // ---
-
+    
     private void ResetSelection()
     {
         if (_selectedPolygonId is null && 
