@@ -11,7 +11,7 @@ public sealed class EditorService(Scene scene)
     private readonly ConstraintSolver _solver = new(scene);
 
     public bool MoveVertex(Guid polygonId, Guid vertexId, Point2D newPosition) =>
-        _solver.TryMoveVertex(polygonId, vertexId, newPosition);
+        _solver.TryMoveTarget(MoveTarget.Vertex(polygonId, vertexId), newPosition);
 
     public bool MoveBezierControlPoint(
         Guid polygonId,
@@ -19,16 +19,13 @@ public sealed class EditorService(Scene scene)
         int controlPointIndex,
         Point2D newPosition)
     {
-        if (controlPointIndex is not (0 or 1)) return false;
-        
-        var polygon = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);
-        var edge = polygon?.Edges.FirstOrDefault(e => e.Id == edgeId);
-        
-        if (edge?.Geometry is not CubicBezierGeometry bezier) 
+        if (controlPointIndex is not (0 or 1))
             return false;
 
-        edge.Geometry = bezier.WithControlPoint(controlPointIndex, newPosition);
-        return true;
+        return _solver.TryMoveTarget(
+            MoveTarget.BezierControlPoint(polygonId, edgeId, controlPointIndex), 
+            newPosition
+        );
     }
 
     public bool SplitEdge(Guid polygonId, Guid edgeId)
@@ -76,6 +73,7 @@ public sealed class EditorService(Scene scene)
         var end = polygon.Vertices.First(v => v.Id == edge.ToVertexId).Position;
 
         edge.Geometry = EdgeGeometryFactory.CreateDefault(start, end, geometryType);
+        ContinuityHelper.ResetInvalid(Scene);
         return true;
     }
     
@@ -156,4 +154,27 @@ public sealed class EditorService(Scene scene)
 
     public bool RemoveConstraint(Guid constraintId) =>
         Scene.RemoveConstraint(constraintId);
+    
+    public bool SetVertexContinuity(Guid polygonId, Guid vertexId, ContinuityType type)
+    {
+        var polygon = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);
+        var vertex = polygon?.Vertices.FirstOrDefault(v => v.Id == vertexId);
+
+        if (polygon is null || vertex is null)
+            return false;
+
+        if (!ContinuityHelper.CanApply(polygon, vertexId, type))
+            return false;
+
+        vertex.Continuity = type;
+        return true;
+    }
+
+    public ContinuityType? GetVertexContinuity(Guid polygonId, Guid vertexId)
+    {
+        var polygon = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);
+        var vertex = polygon?.Vertices.FirstOrDefault(v => v.Id == vertexId);
+
+        return vertex?.Continuity;
+    }
 }

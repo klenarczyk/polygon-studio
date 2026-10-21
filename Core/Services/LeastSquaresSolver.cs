@@ -236,7 +236,7 @@ public sealed class LeastSquaresSolver
 
 public sealed class LeastSquaresOptions
 {
-    public int MaxIterations { get; init; } = 1000;
+    public int MaxIterations { get; init; } = 10000;
     public double GradientTolerance { get; init; } = 1e-8;
     public double StepTolerance { get; init; } = 1e-9;
     public double InitialDamping { get; init; } = 1e-3;
