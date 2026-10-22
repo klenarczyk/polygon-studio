@@ -53,6 +53,10 @@ public sealed class PolygonCanvas : Control
         var vertexPen = new Pen(Brushes.Black, 2);
         var controlPen = new Pen(Brushes.SlateGray, 1, DashStyle.Dash);
         
+        var perpendicularConstraints = Scene.Constraints
+            .OfType<PerpendicularEdgesConstraint>()
+            .ToList();
+        
         // Edges
         foreach (var polygon in Scene.Polygons)
         {
@@ -139,6 +143,58 @@ public sealed class PolygonCanvas : Control
                     context.DrawText(
                         lengthLabel,
                         new Point(midpoint.X + 12, midpoint.Y - lengthLabel.Height / 2)
+                    );
+                }
+                
+                var perpendicularMatch = perpendicularConstraints
+                    .Select((constraint, index) => new
+                    {
+                        Constraint = constraint,
+                        Id = $"P{index + 1}"
+                    })
+                    .FirstOrDefault(item =>
+                        (item.Constraint.PolygonId1 == polygon.Id &&
+                         item.Constraint.EdgeId1 == edge.Id) ||
+                        (item.Constraint.PolygonId2 == polygon.Id &&
+                         item.Constraint.EdgeId2 == edge.Id));
+
+                if (perpendicularMatch is not null)
+                {
+                    var midpoint = new Point((start.X + end.X) / 2, (start.Y + end.Y) / 2 - 18);
+
+                    context.DrawEllipse(
+                        Brushes.White,
+                        new Pen(Brushes.RoyalBlue, 1.5),
+                        midpoint,
+                        10, 10
+                    );
+
+                    var symbol = new FormattedText(
+                        "⊥",
+                        CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight,
+                        Typeface.Default,
+                        12,
+                        Brushes.RoyalBlue
+                    );
+
+                    context.DrawText(
+                        symbol,
+                        new Point(midpoint.X - symbol.Width / 2, midpoint.Y - symbol.Height / 2)
+                    );
+
+                    var idLabel = new FormattedText(
+                        perpendicularMatch.Id,
+                        CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight,
+                        Typeface.Default,
+                        11,
+                        Brushes.RoyalBlue
+                    );
+
+                    context.DrawText(
+                        idLabel,
+                        new Point(midpoint.X + 12, midpoint.Y - idLabel.Height / 2)
                     );
                 }
             }
@@ -472,7 +528,24 @@ public sealed class PolygonCanvas : Control
                 Editor,
                 edgeRes.Polygon.Id, edgeRes.Edge.Id,
                 edgeRes.Edge.Geometry,
-                InvalidateVisual
+                InvalidateVisual,
+                _selectedEdgeIds.Count == 2,
+                addPerpendicularConstraint:
+                () =>
+                {
+                    if (_selectedEdgeIds.Count != 2)
+                        return;
+
+                    var first = _selectedEdgeIds[0];
+                    var second = _selectedEdgeIds[1];
+
+                    if (Editor?.AddPerpendicularConstraint(
+                            first.PolygonId, first.EdgeId,
+                            second.PolygonId, second.EdgeId) == true)
+                    {
+                        _selectedEdgeIds.Clear();
+                    }
+                }
             );   
             
             e.Handled = true;
@@ -529,6 +602,30 @@ public sealed class PolygonCanvas : Control
         double top = (Bounds.Height - drawnHeight) / 2;
 
         return new ViewTransform(scale, left, top, minX, maxY);
+    }
+    
+    // ---
+    
+    public bool TryAddPerpendicularConstraint()
+    {
+        if (Editor is null || _selectedEdgeIds.Count != 2)
+            return false;
+
+        var first = _selectedEdgeIds[0];
+        var second = _selectedEdgeIds[1];
+
+        bool added = Editor.AddPerpendicularConstraint(
+            first.PolygonId, first.EdgeId,
+            second.PolygonId, second.EdgeId
+        );
+
+        if (added)
+        {
+            _selectedEdgeIds.Clear();
+            InvalidateVisual();
+        }
+
+        return added;
     }
     
     // ---

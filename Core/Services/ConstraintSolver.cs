@@ -28,6 +28,10 @@ public sealed class ConstraintSolver(Scene scene)
         var fixedConstraints = ResolveFixedConstraints();
         if (fixedConstraints is null)
             return false;
+        
+        var perpendicularConstraints = ResolvePerpendicularConstraints();
+        if (perpendicularConstraints is null)
+            return false;
 
         var continuityConstraints = ResolveContinuities();
         if (continuityConstraints is null)
@@ -44,6 +48,7 @@ public sealed class ConstraintSolver(Scene scene)
                     values,
                     layout,
                     fixedConstraints,
+                    perpendicularConstraints,
                     continuityConstraints,
                     targetX,
                     requestedPosition)
@@ -184,6 +189,44 @@ public sealed class ConstraintSolver(Scene scene)
 
         return result;
     }
+    
+    private List<ResolvedPerpendicularConstraint>? ResolvePerpendicularConstraints()
+    {
+        var result = new List<ResolvedPerpendicularConstraint>();
+
+        foreach (var constraint in scene.Constraints.OfType<PerpendicularEdgesConstraint>())
+        {
+            var polygon1 = scene.Polygons.FirstOrDefault(p => p.Id == constraint.PolygonId1);
+            var polygon2 = scene.Polygons.FirstOrDefault(p => p.Id == constraint.PolygonId2);
+            
+            var edge1 = polygon1?.Edges.FirstOrDefault(e => e.Id == constraint.EdgeId1);
+            var edge2 = polygon2?.Edges.FirstOrDefault(e => e.Id == constraint.EdgeId2);
+
+            if (polygon1 is null || polygon2 is null || edge1 is null || edge2 is null)
+                return null;
+
+            if (edge1.Geometry is not LineGeometry || edge2.Geometry is not LineGeometry)
+                return null;
+            
+            var from1 = polygon1.Vertices.FirstOrDefault(v => v.Id == edge1.FromVertexId);
+            var to1 = polygon1.Vertices.FirstOrDefault(v => v.Id == edge1.ToVertexId);
+            
+            var from2 = polygon2.Vertices.FirstOrDefault(v => v.Id == edge2.FromVertexId);
+            var to2 = polygon2.Vertices.FirstOrDefault(v => v.Id == edge2.ToVertexId);
+
+            if (from1 is null || to1 is null || from2 is null || to2 is null)
+                return null;
+
+            result.Add(new ResolvedPerpendicularConstraint(
+                new VertexKey(polygon1.Id, from1.Id),
+                new VertexKey(polygon1.Id, to1.Id),
+                new VertexKey(polygon2.Id, from2.Id),
+                new VertexKey(polygon2.Id, to2.Id))
+            );
+        }
+
+        return result;
+    }
 
     private List<ResolvedContinuity>? ResolveContinuities()
     {
@@ -219,6 +262,7 @@ public sealed class ConstraintSolver(Scene scene)
         double[] values,
         VariableLayout layout,
         IReadOnlyList<ResolvedFixedConstraint> fixedConstraints,
+        IReadOnlyList<ResolvedPerpendicularConstraint> perpendicularConstraints,
         IReadOnlyList<ResolvedContinuity> continuities,
         int targetX,
         Point2D requestedPosition)
@@ -236,6 +280,33 @@ public sealed class ConstraintSolver(Scene scene)
             double length = Math.Sqrt(dx * dx + dy * dy);
             
             residuals.Add(ConstraintWeight * (length - constraint.EdgeLength));
+        }
+        
+        foreach (var constraint in perpendicularConstraints)
+        {
+            int a = layout.Vertices[constraint.From1];
+            int b = layout.Vertices[constraint.To1];
+            int c = layout.Vertices[constraint.From2];
+            int d = layout.Vertices[constraint.To2];
+
+            double ax = values[b] - values[a];
+            double ay = values[b + 1] - values[a + 1];
+
+            double bx = values[d] - values[c];
+            double by = values[d + 1] - values[c + 1];
+
+            double lengthA = Math.Sqrt(ax * ax + ay * ay);
+            double lengthB = Math.Sqrt(bx * bx + by * by);
+
+            if (lengthA < 1e-12 || lengthB < 1e-12)
+            {
+                residuals.Add(ConstraintWeight);
+                continue;
+            }
+
+            // TODO: Use Dot() ???
+            double normalizedDot = (ax * bx + ay * by) / (lengthA * lengthB);
+            residuals.Add(ConstraintWeight * normalizedDot);
         }
         
         foreach (var continuity in continuities)
@@ -468,15 +539,18 @@ public sealed class ConstraintSolver(Scene scene)
     );
     
     private sealed record ResolvedFixedConstraint(
-        VertexKey FromKey,
-        VertexKey ToKey,
+        VertexKey FromKey, VertexKey ToKey,
         double EdgeLength
+    );
+
+    private sealed record ResolvedPerpendicularConstraint(
+        VertexKey From1, VertexKey To1,
+        VertexKey From2, VertexKey To2
     );
 
     private sealed record ResolvedContinuity(
         Polygon Polygon,
         ContinuityType Type,
-        Edge Incoming,
-        Edge Outgoing
+        Edge Incoming, Edge Outgoing
     );
 }

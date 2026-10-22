@@ -16,7 +16,9 @@ public static class EdgeContextMenu
         EditorService editor,
         Guid polygonId, Guid edgeId,
         EdgeGeometry currentGeometry,
-        Action invalidateVisual)
+        Action invalidateVisual,
+        bool canAddPerpendicularConstraint,
+        Action addPerpendicularConstraint)
     {
         var menu = new ContextMenu
         {
@@ -124,7 +126,21 @@ public static class EdgeContextMenu
             }
         };
 
+        var perpendicularItem = new MenuItem
+        {
+            Header = "Perpendicular-ify",
+            IsEnabled = canAddPerpendicularConstraint
+        };
+
+        perpendicularItem.Click += (_, _) =>
+        {
+            addPerpendicularConstraint();
+            invalidateVisual();
+        };
+        
         constraintMenu.Items.Add(fixedLengthItem);
+        constraintMenu.Items.Add(perpendicularItem);
+        
         menu.Items.Add(constraintMenu);
         menu.Items.Add(new Separator());
         

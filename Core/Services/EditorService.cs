@@ -152,6 +152,31 @@ public sealed class EditorService(Scene scene)
         return Scene.TryAddConstraint(constraint); // TODO: Make the solver move the vertices accordingly
     }
 
+    public bool AddPerpendicularConstraint(
+        Guid polygonId1, Guid edgeId1,
+        Guid polygonId2, Guid edgeId2)
+    {
+        var polygon1 = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId1);
+        var polygon2 = Scene.Polygons.FirstOrDefault(p => p.Id == polygonId2);
+
+        var edge1 = polygon1?.Edges.FirstOrDefault(e => e.Id == edgeId1);
+        var edge2 = polygon2?.Edges.FirstOrDefault(e => e.Id == edgeId2);
+
+        if (edge1 is null || edge2 is null ||
+            edge1.Geometry is not LineGeometry ||
+            edge2.Geometry is not LineGeometry)
+        {
+            return false;
+        }
+
+        if (polygonId1 == polygonId2 && edgeId1 == edgeId2)
+            return false;
+
+        return Scene.TryAddConstraint(new PerpendicularEdgesConstraint(
+                polygonId1, edgeId1, polygonId2, edgeId2)
+        );
+    }
+    
     public bool RemoveConstraint(Guid constraintId) =>
         Scene.RemoveConstraint(constraintId);
     
