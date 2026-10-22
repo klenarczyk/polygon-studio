@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Avalonia;
@@ -23,7 +24,7 @@ public sealed class PolygonCanvas : Control
 
     private Guid? _selectedPolygonId;
     private Guid? _selectedVertexId;
-    private Guid? _selectedEdgeId;
+    private readonly List<SelectedEdge> _selectedEdgeIds = [];
     
     private DragTarget _dragTarget = DragTarget.None;
     private Guid? _draggedPolygonId;
@@ -65,8 +66,7 @@ public sealed class PolygonCanvas : Control
                 var start = transform.ToScreen(from.Position);
                 var end = transform.ToScreen(to.Position);
 
-                bool isSelected = polygon.Id == _selectedPolygonId &&
-                                  edge.Id == _selectedEdgeId;
+                bool isSelected = _selectedEdgeIds.Contains(new SelectedEdge(polygon.Id, edge.Id));
 
                 var currentEdgePen = isSelected ? selectedEdgePen : edgePen;
                 
@@ -215,7 +215,8 @@ public sealed class PolygonCanvas : Control
             return;
         }
         
-        ResetSelection();
+        bool ctrlPressed = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        if (!ctrlPressed) ResetSelection();
         
         base.OnPointerPressed(e);
 
@@ -307,16 +308,44 @@ public sealed class PolygonCanvas : Control
 
             var hitTester = new CanvasHitTester(Scene, transform);
             var edgeHit = hitTester.FindEdgeAt(pointerPos);
-            
-            if (edgeHit is not { } hitRes) 
-                return;
 
-            _dragTarget = DragTarget.Polygon;
-            _draggedPolygonId = hitRes.Polygon.Id;
-            _previousPointerPosition = transform.ToWorld(pointerPos);
+            if (edgeHit is { } hitRes)
+            {
+                if (ctrlPressed)
+                {
+                    _selectedPolygonId = hitRes.Polygon.Id;
+                    
+                    var selected = new SelectedEdge(hitRes.Polygon.Id, hitRes.Edge.Id);
+                    int existingIndex = _selectedEdgeIds.IndexOf(selected);
+
+                    if (existingIndex >= 0)
+                    {
+                        _selectedEdgeIds.RemoveAt(existingIndex);
+                    }
+                    else
+                    {
+                        if (_selectedEdgeIds.Count >= 2)
+                            _selectedEdgeIds.RemoveAt(0);
+                        
+                        _selectedEdgeIds.Add(selected);
+                    }
+
+                    InvalidateVisual();
+                    e.Handled = true;
+                    return;
+                }
+                
+                ResetSelection();
+                _selectedPolygonId = hitRes.Polygon.Id;
+                _selectedEdgeIds.Add(new SelectedEdge(hitRes.Polygon.Id, hitRes.Edge.Id));
+                
+                _dragTarget = DragTarget.Polygon;
+                _draggedPolygonId = hitRes.Polygon.Id;
+                _previousPointerPosition = transform.ToWorld(pointerPos);
             
-            e.Pointer.Capture(this);
-            e.Handled = true;
+                e.Pointer.Capture(this);
+                e.Handled = true;
+            }
         }
     }
 
@@ -394,11 +423,11 @@ public sealed class PolygonCanvas : Control
         var hitTester = new CanvasHitTester(Scene, transform);
         var pointerPos = e.GetPosition(this);
         
-        ResetSelection();
-        
         var vertexHit = hitTester.FindVertexAt(pointerPos);
         if (vertexHit is { } vertexRes)
         {
+            ResetSelection();
+            
             _selectedPolygonId = vertexRes.Polygon.Id;
             _selectedVertexId = vertexRes.Vertex.Id;
             
@@ -418,7 +447,23 @@ public sealed class PolygonCanvas : Control
         if (edgeHit is { } edgeRes)
         {
             _selectedPolygonId = edgeRes.Polygon.Id;
-            _selectedEdgeId = edgeRes.Edge.Id;
+            
+            var selected = new SelectedEdge(edgeRes.Polygon.Id, edgeRes.Edge.Id);
+            int existingIndex = _selectedEdgeIds.IndexOf(selected);
+
+            if (existingIndex < 0)
+            {
+                if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+                {
+                    if (_selectedEdgeIds.Count >= 2)
+                        _selectedEdgeIds.RemoveAt(0);
+                } else
+                {
+                    _selectedEdgeIds.Clear();
+                }
+
+                _selectedEdgeIds.Add(selected);
+            }
             
             InvalidateVisual();
             
@@ -431,7 +476,10 @@ public sealed class PolygonCanvas : Control
             );   
             
             e.Handled = true;
+            return;
         }
+        
+        ResetSelection();
     }
     
     // ---
@@ -489,14 +537,14 @@ public sealed class PolygonCanvas : Control
     {
         if (_selectedPolygonId is null && 
             _selectedVertexId is null && 
-            _selectedEdgeId is null)
+            _selectedEdgeIds.Count == 0)
         {
             return;
         }
         
         _selectedPolygonId = null;
         _selectedVertexId = null;
-        _selectedEdgeId = null;
+        _selectedEdgeIds.Clear();
         
         InvalidateVisual();
     }
@@ -508,4 +556,9 @@ public sealed class PolygonCanvas : Control
         Vertex,
         BezierControlPoint
     }
+    
+    private readonly record struct SelectedEdge(
+        Guid PolygonId,
+        Guid EdgeId
+    );
 }
