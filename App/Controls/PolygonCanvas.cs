@@ -184,7 +184,25 @@ public sealed class PolygonCanvas : Control
                     vertexPen,
                     point,
                     VertexRadius,
-                    VertexRadius);
+                    VertexRadius
+                );
+
+                if (vertex.Continuity == ContinuityType.G0) 
+                    continue;
+                
+                var label = new FormattedText(
+                    vertex.Continuity.ToString(),
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    Typeface.Default,
+                    11,
+                    Brushes.DarkSlateGray
+                );
+
+                context.DrawText(
+                    label,
+                    new Point(point.X + VertexRadius + 4, point.Y - label.Height / 2)
+                );
             }
         }
     }
