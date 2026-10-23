@@ -69,12 +69,10 @@ public static class ContinuityHelper
     public static void ResetInvalid(Scene scene)
     {
         foreach (var polygon in scene.Polygons)
+        foreach (var vertex in polygon.Vertices)
         {
-            foreach (var vertex in polygon.Vertices)
-            {
-                if (!CanApply(polygon, vertex.Id, vertex.Continuity))
-                    vertex.Continuity = ContinuityType.G0;
-            }
+            if (!CanApply(polygon, vertex.Id, vertex.Continuity))
+                vertex.Continuity = ContinuityType.G0;
         }
     }
 }

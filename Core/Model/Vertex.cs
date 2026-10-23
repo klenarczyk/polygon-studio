@@ -14,7 +14,7 @@ public sealed class Vertex
     {
         Position = position;
     }
-
+    
     public Vertex(double x, double y)
     {
         Position = new Point2D(x, y);

@@ -11,6 +11,9 @@ public readonly record struct CircularArcParameters(
 
 public static class CircularArcMath
 {
+    private const double MinimumChordLength = 1e-9;
+    private const double MinimumBulgeMagnitude = 1e-9;
+    
     public static bool TryGetParameters(
         Point2D start, Point2D end,
         CircularArcGeometry arc,
@@ -21,9 +24,9 @@ public static class CircularArcMath
         double dx = end.X - start.X;
         double dy = end.Y - start.Y;
         double chordLength = Math.Sqrt(dx * dx + dy * dy);
-        double b = arc.Bulge;
+        double bulge = arc.Bulge;
 
-        if (chordLength < 1e-9 || Math.Abs(b) < 1e-9)
+        if (chordLength < MinimumChordLength || Math.Abs(bulge) < MinimumBulgeMagnitude)
             return false;
 
         // Chord midpoint
@@ -31,7 +34,7 @@ public static class CircularArcMath
         double midpointY = (start.Y + end.Y) / 2.0;
         
         // Distance between chord midpoint and circle center
-        double offset = chordLength * (1.0 - b * b) / (4.0 * b);
+        double offset = chordLength * (1.0 - bulge * bulge) / (4.0 * bulge);
         
         double nx = -dy / chordLength;
         double ny = dx / chordLength;
@@ -39,20 +42,20 @@ public static class CircularArcMath
         // Circle center
         var center = new Point2D(
             midpointX + nx * offset,
-            midpointY + ny * offset);
+            midpointY + ny * offset
+        );
 
-        double radius = chordLength * (1.0 + b * b) / (4.0 * Math.Abs(b));
+        double radius = chordLength * (1.0 + bulge * bulge) / (4.0 * Math.Abs(bulge));
 
         double startAngle = Math.Atan2(
             start.Y - center.Y,
-            start.X - center.X);
+            start.X - center.X
+        );
 
         // Angular sweep
-        double sweep = 4.0 * Math.Atan(b);
+        double sweep = 4.0 * Math.Atan(bulge);
 
-        parameters = new CircularArcParameters(
-            center, radius, startAngle, sweep);
-
+        parameters = new CircularArcParameters(center, radius, startAngle, sweep);
         return true;
     }
 }

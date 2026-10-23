@@ -9,10 +9,10 @@ public sealed class ConstraintSolver(Scene scene)
 {
     private const double ConstraintWeight = 1000.0;
     private const double TargetWeight = 1000.0;
-    private const double PreservationWeight = 10;
-    private const double ControlPointPreservationWeight = 0.1;
+    private const double PreservationWeight = 1;
+    private const double ControlPointPreservationWeight = 0.01;
     
-    private const double LengthTolerance = 1e-5;
+    private const double ConstraintTolerance = 1e-5;
     private const double ContinuityTolerance = 1e-5;
     private const double TargetTolerance = 1e-4;
 
@@ -38,6 +38,7 @@ public sealed class ConstraintSolver(Scene scene)
             return false;
 
         double[] initial = layout.Initial;
+
         double[] candidate;
 
         try
@@ -55,7 +56,9 @@ public sealed class ConstraintSolver(Scene scene)
             );
 
             if (!res.Converged)
+            {
                 return false;
+            }
 
             candidate = res.Variables;
 
@@ -63,6 +66,7 @@ public sealed class ConstraintSolver(Scene scene)
                     candidate,
                     layout,
                     fixedConstraints,
+                    perpendicularConstraints,
                     continuityConstraints,
                     targetX,
                     requestedPosition))
@@ -74,7 +78,7 @@ public sealed class ConstraintSolver(Scene scene)
         {
             return false;
         }
-
+        
         Commit(candidate, layout);
         return true;
     }
@@ -289,23 +293,26 @@ public sealed class ConstraintSolver(Scene scene)
             int c = layout.Vertices[constraint.From2];
             int d = layout.Vertices[constraint.To2];
 
-            double ax = values[b] - values[a];
-            double ay = values[b + 1] - values[a + 1];
+            var pointA = new Point2D(
+                values[b] - values[a], 
+                values[b + 1] - values[a + 1]
+            );
 
-            double bx = values[d] - values[c];
-            double by = values[d + 1] - values[c + 1];
+            var pointB = new Point2D(
+                values[d] - values[c], 
+                values[d + 1] - values[c + 1]
+            );
 
-            double lengthA = Math.Sqrt(ax * ax + ay * ay);
-            double lengthB = Math.Sqrt(bx * bx + by * by);
+            double lengthA = Length(pointA);
+            double lengthB = Length(pointB);
 
             if (lengthA < 1e-12 || lengthB < 1e-12)
             {
                 residuals.Add(ConstraintWeight);
                 continue;
             }
-
-            // TODO: Use Dot() ???
-            double normalizedDot = (ax * bx + ay * by) / (lengthA * lengthB);
+            
+            double normalizedDot = Dot(pointA, pointB) / (lengthA * lengthB);
             residuals.Add(ConstraintWeight * normalizedDot);
         }
         
@@ -331,9 +338,10 @@ public sealed class ConstraintSolver(Scene scene)
                     residuals.Add(ConstraintWeight);
                     continue;
                 }
-
+                
                 // Co-linear -> Cross product == 0
-                residuals.Add(ConstraintWeight * Cross(incoming, outgoing) / (aLength * bLength));
+                double normalizedDot = Dot(incoming, outgoing) / (aLength * bLength);
+                residuals.Add(ConstraintWeight * (1.0 - normalizedDot));
             }
             else if (continuity.Type == ContinuityType.C1)
             {
@@ -371,6 +379,7 @@ public sealed class ConstraintSolver(Scene scene)
         double[] values,
         VariableLayout layout,
         IReadOnlyList<ResolvedFixedConstraint> fixedConstraints,
+        IReadOnlyList<ResolvedPerpendicularConstraint> perpendicularConstraints,
         IReadOnlyList<ResolvedContinuity> continuities,
         int targetX,
         Point2D requestedPosition)
@@ -393,12 +402,41 @@ public sealed class ConstraintSolver(Scene scene)
             double dy = values[to + 1] - values[from + 1];
             double length = Math.Sqrt(dx * dx + dy * dy);
 
-            double tolerance = LengthTolerance * Math.Max(1.0, constraint.EdgeLength);
+            double tolerance = ConstraintTolerance * Math.Max(1.0, constraint.EdgeLength);
 
             if (Math.Abs(length - constraint.EdgeLength) > tolerance)
                 return false;
         }
 
+        foreach (var constraint in perpendicularConstraints)
+        {
+            int a = layout.Vertices[constraint.From1];
+            int b = layout.Vertices[constraint.To1];
+            int c = layout.Vertices[constraint.From2];
+            int d = layout.Vertices[constraint.To2];
+
+            var pointA = new Point2D(
+                values[b] - values[a], 
+                values[b + 1] - values[a + 1]
+            );
+
+            var pointB = new Point2D(
+                values[d] - values[c], 
+                values[d + 1] - values[c + 1]
+            );
+
+            double lengthA = Length(pointA);
+            double lengthB = Length(pointB);
+
+            if (lengthA < 1e-12 || lengthB < 1e-12)
+                return false;
+
+            double normalizedDot = Dot(pointA, pointB) / (lengthA * lengthB);
+
+            if (Math.Abs(normalizedDot) > ConstraintTolerance)
+                return false;
+        }
+        
         foreach (var continuity in continuities)
         {
             var a = Derivative(
@@ -450,17 +488,14 @@ public sealed class ConstraintSolver(Scene scene)
             {
                 var key = new EdgeKey(polygon.Id, edge.Id);
 
-                if (edge.Geometry is CubicBezierGeometry bezier)
+                if (edge.Geometry is CubicBezierGeometry)
                 {
                     var indices = layout.Beziers[key];
 
-                    edge.Geometry = bezier
-                        .WithControlPoint(0, new Point2D(
-                            values[indices.Cp1],
-                            values[indices.Cp1 + 1]))
-                        .WithControlPoint(1, new Point2D(
-                            values[indices.Cp2],
-                            values[indices.Cp2 + 1]));
+                    edge.Geometry = new CubicBezierGeometry(
+                            new Point2D(values[indices.Cp1], values[indices.Cp1 + 1]), 
+                            new Point2D(values[indices.Cp2], values[indices.Cp2 + 1])
+                        );
                 }
                 else if (edge.Geometry is CircularArcGeometry)
                 {

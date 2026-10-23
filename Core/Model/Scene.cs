@@ -1,4 +1,5 @@
-﻿using PolygonStudio.Core.Constraints;
+﻿using System.Drawing;
+using PolygonStudio.Core.Constraints;
 using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model.Geometries;
 
@@ -22,24 +23,17 @@ public class Scene
         if (_constraints.Any(c => c.Id == constraint.Id))
             return false;
 
-        if (constraint is FixedEdgeLengthConstraint fixedLength)
+        bool isValid = constraint switch
         {
-            var polygon = _polygons.FirstOrDefault(p => p.Id == fixedLength.PolygonId);
-            var edge = polygon?.Edges.FirstOrDefault(e => e.Id == fixedLength.EdgeId);
+            FixedEdgeLengthConstraint fixedLength => IsValidFixedLengthConstraint(fixedLength),
 
-            if (edge is null)
-                return false;
+            PerpendicularEdgesConstraint perpendicular => IsValidPerpendicularConstraint(perpendicular),
 
-            if (_constraints
-                .OfType<FixedEdgeLengthConstraint>()
-                .Any(c => 
-                    c.PolygonId == fixedLength.PolygonId && 
-                    c.EdgeId == fixedLength.EdgeId)
-                )
-            {
-                return false;
-            }
-        }
+            _ => false
+        };
+
+        if (!isValid)
+            return false;
         
         _constraints.Add(constraint);
         return true;
@@ -53,11 +47,17 @@ public class Scene
     
     public void RemoveConstraintsForEdge(Guid polygonId, Guid edgeId)
     {
-        _constraints.RemoveAll(c =>
-            c is FixedEdgeLengthConstraint fixedLength &&
-            fixedLength.PolygonId == polygonId &&
-            fixedLength.EdgeId == edgeId
-        );
+        _constraints.RemoveAll(c => c switch
+        {
+            FixedEdgeLengthConstraint fixedLength =>
+                fixedLength.PolygonId == polygonId && fixedLength.EdgeId == edgeId,
+
+            PerpendicularEdgesConstraint perpendicular =>
+                (perpendicular.PolygonId1 == polygonId && perpendicular.EdgeId1 == edgeId) ||
+                (perpendicular.PolygonId2 == polygonId && perpendicular.EdgeId2 == edgeId),
+
+            _ => false
+        });
     }
     
     public void Reset()
@@ -72,30 +72,92 @@ public class Scene
 
     private void Initialize()
     {
-        var polygon1 = new Polygon();
-        var polygon2 = new Polygon();
-
-        polygon1.Vertices[0].Position = new Point2D(-100.0, 0.0);
-        polygon1.Vertices[1].Position = new Point2D(-55.0, 50.0);
-        polygon1.Vertices[2].Position = new Point2D(-10.0, 0.0);
+        var polygon1 = new Polygon(
+        [
+            new Point2D(-100.0, 0.0),
+            new Point2D(-55.0, 50.0),
+            new Point2D(-10.0, 0.0)
+        ]);
         
-        polygon2.Vertices[0].Position = new Point2D(10.0, 50.0);
-        polygon2.Vertices[1].Position = new Point2D(55.0, 0.0);
-        polygon2.Vertices[2].Position = new Point2D(100.0, 50.0);
+        var polygon2 = new Polygon(
+        [
+            new Point2D(10.0, 50.0),
+            new Point2D(55.0, 0.0),
+            new Point2D(100.0, 50.0)
+        ]);
         
-        polygon1.Edges[0].Geometry = new CubicBezierGeometry(
-            new Point2D(-100.0, 25.0),
-            new Point2D(-55.0, 25.0)
-        );
-
-        polygon2.Edges[0].Geometry = CircularArcGeometry.CreateSemicircle();
-
-        var constraint = new FixedEdgeLengthConstraint(polygon1.Id, polygon1.Edges[2].Id, 90.0);
+        // polygon1.Edges[0].Geometry = new CubicBezierGeometry(
+        //     new Point2D(-100.0, 25.0),
+        //     new Point2D(-55.0, 25.0)
+        // );
+        //
+        // polygon2.Edges[0].Geometry = CircularArcGeometry.CreateSemicircle();
+        //
+        // var constraint = new FixedEdgeLengthConstraint(polygon1.Id, polygon1.Edges[2].Id, 90.0);
         
         _polygons.Add(polygon1);
         _polygons.Add(polygon2);
         
-        _constraints.Add(constraint);
+        // _constraints.Add(constraint);
     }
     
+    private bool IsValidFixedLengthConstraint(FixedEdgeLengthConstraint constraint)
+    {
+        var polygon = _polygons.FirstOrDefault(p => p.Id == constraint.PolygonId);
+        var edge = polygon?.Edges.FirstOrDefault(e => e.Id == constraint.EdgeId);
+        
+        if (edge == null)
+            return false;
+
+        return !_constraints
+            .OfType<FixedEdgeLengthConstraint>()
+            .Any(existing =>
+                existing.PolygonId == constraint.PolygonId &&
+                existing.EdgeId == constraint.EdgeId
+            );
+    }
+
+    private bool IsValidPerpendicularConstraint(PerpendicularEdgesConstraint constraint)
+    {
+        if (constraint.PolygonId1 == constraint.PolygonId2 &&
+            constraint.EdgeId1 == constraint.EdgeId2)
+        {
+            return false;
+        }
+
+        var polygon1 = _polygons.FirstOrDefault(p => p.Id == constraint.PolygonId1);
+        var polygon2 = _polygons.FirstOrDefault(p => p.Id == constraint.PolygonId2);
+        
+        var edge1 = polygon1?.Edges.FirstOrDefault(e => e.Id == constraint.EdgeId1);
+        var edge2 = polygon2?.Edges.FirstOrDefault(e => e.Id == constraint.EdgeId2);
+        
+        if (edge1 == null ||  edge2 == null)
+            return false;
+        
+        if (edge1.Geometry is not LineGeometry || edge2.Geometry is not LineGeometry)
+        {
+            return false;
+        }
+
+        return !_constraints
+            .OfType<PerpendicularEdgesConstraint>()
+            .Any(existing => SameEdgePair(existing, constraint));
+    }
+
+    private static bool SameEdgePair(PerpendicularEdgesConstraint first, PerpendicularEdgesConstraint second)
+    {
+        bool sameOrder =
+            first.PolygonId1 == second.PolygonId1 &&
+            first.EdgeId1 == second.EdgeId1 &&
+            first.PolygonId2 == second.PolygonId2 &&
+            first.EdgeId2 == second.EdgeId2;
+
+        bool reversedOrder =
+            first.PolygonId1 == second.PolygonId2 &&
+            first.EdgeId1 == second.EdgeId2 &&
+            first.PolygonId2 == second.PolygonId1 &&
+            first.EdgeId2 == second.EdgeId1;
+
+        return sameOrder || reversedOrder;
+    }
 }

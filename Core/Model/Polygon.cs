@@ -1,4 +1,6 @@
-﻿namespace PolygonStudio.Core.Model;
+﻿using PolygonStudio.Core.Geometry;
+
+namespace PolygonStudio.Core.Model;
 
 public sealed class Polygon
 {
@@ -10,20 +12,26 @@ public sealed class Polygon
     private readonly List<Edge> _edges = [];
     public IReadOnlyList<Edge> Edges => _edges;
 
-    public Polygon()
+    public Polygon(IReadOnlyList<Point2D> vertices)
     {
-        _vertices.Add(new Vertex(-100.0, 0.0));
-        _vertices.Add(new Vertex(0.0, 100.0));
-        _vertices.Add(new Vertex(100.0, 0.0));
-        
-        _edges.Add(new Edge(_vertices[0].Id, _vertices[1].Id));
-        _edges.Add(new Edge(_vertices[1].Id, _vertices[2].Id));
-        _edges.Add(new Edge(_vertices[2].Id, _vertices[0].Id));
+        if (vertices.Count < 3)
+            throw new ArgumentException("A polygon must have at least 3 vertices.", nameof(vertices));
+
+        foreach (var vertex in vertices)
+            AddVertex(new Vertex(vertex));
+
+        for (var i = 0; i < vertices.Count; i++)
+        {
+            var fromId = _vertices[i].Id;
+            var toId = _vertices[(i + 1) % vertices.Count].Id;
+            
+            AddEdge(new Edge(fromId, toId));
+        }
     }
     
     internal void AddVertex(Vertex vertex)
     {
-        if (_vertices.FirstOrDefault(v => v.Id == vertex.Id) != null)
+        if (_vertices.Any(v => v.Id == vertex.Id))
             return;
         
         _vertices.Add(vertex);
@@ -40,7 +48,7 @@ public sealed class Polygon
     
     internal void AddEdge(Edge edge)
     {
-        if (_edges.FirstOrDefault(e => e.Id == edge.Id) != null)
+        if (_edges.Any(e => e.Id == edge.Id))
             return;
         
         _edges.Add(edge);

@@ -72,6 +72,12 @@ public sealed class LeastSquaresSolver
             if (candidate.Any(v => !double.IsFinite(v)))
             {
                 damping *= 10;
+                
+                if (damping > _options.MaximumDamping)
+                {
+                    return LeastSquaresResult.Failure(x, "Could not solve the damped linear system.");
+                }
+                
                 continue;
             }
 
@@ -99,7 +105,7 @@ public sealed class LeastSquaresSolver
 
                 if (damping > _options.MaximumDamping)
                 {
-                    return LeastSquaresResult.Failure(x, "No improving step found; the solver stalled.");
+                    return LeastSquaresResult.Failure(x, "No improving step found.");
                 }
             }
         }
@@ -236,11 +242,11 @@ public sealed class LeastSquaresSolver
 
 public sealed class LeastSquaresOptions
 {
-    public int MaxIterations { get; init; } = 10000;
+    public int MaxIterations { get; init; } = 500;
     public double GradientTolerance { get; init; } = 1e-8;
     public double StepTolerance { get; init; } = 1e-9;
     public double InitialDamping { get; init; } = 1e-3;
-    public double MaximumDamping { get; init; } = 1e15;
+    public double MaximumDamping { get; init; } = 1e12;
     public double FiniteDifferenceStep { get; init; } = 1e-6;
 }
 

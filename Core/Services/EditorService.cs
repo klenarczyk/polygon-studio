@@ -52,6 +52,8 @@ public sealed class EditorService(Scene scene)
         Scene.RemoveConstraintsForEdge(polygonId, edge.Id);
         
         polygon.RemoveEdge(edge.Id);
+  
+        ContinuityHelper.ResetInvalid(Scene);
         
         return true;
     }
@@ -63,16 +65,16 @@ public sealed class EditorService(Scene scene)
 
         if (polygon is null || edge is null) return false;
 
-        if (geometryType == typeof(CubicBezierGeometry) && edge.Geometry is CubicBezierGeometry)
+        if (edge.Geometry.GetType() == geometryType)
             return true;
 
-        if (geometryType == typeof(CircularArcGeometry) && edge.Geometry is CircularArcGeometry)
-            return true;
+        var start = polygon.Vertices.FirstOrDefault(v => v.Id == edge.FromVertexId)?.Position;
+        var end = polygon.Vertices.FirstOrDefault(v => v.Id == edge.ToVertexId)?.Position;
 
-        var start = polygon.Vertices.First(v => v.Id == edge.FromVertexId).Position;
-        var end = polygon.Vertices.First(v => v.Id == edge.ToVertexId).Position;
-
-        edge.Geometry = EdgeGeometryFactory.CreateDefault(start, end, geometryType);
+        if (start is null || end is null)
+            return false;
+        
+        edge.Geometry = EdgeGeometryFactory.CreateDefault(start.Value, end.Value, geometryType);
         ContinuityHelper.ResetInvalid(Scene);
         return true;
     }
@@ -101,6 +103,8 @@ public sealed class EditorService(Scene scene)
         polygon.RemoveEdge(edge1.Id);
         polygon.RemoveEdge(edge2.Id);
         polygon.RemoveVertex(vertexId);
+        
+        ContinuityHelper.ResetInvalid(Scene);
         
         return true;
     }
