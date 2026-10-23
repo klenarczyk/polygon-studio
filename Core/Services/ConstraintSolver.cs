@@ -38,7 +38,6 @@ public sealed class ConstraintSolver(Scene scene)
             return false;
 
         double[] initial = layout.Initial;
-
         double[] candidate;
 
         try
@@ -52,7 +51,8 @@ public sealed class ConstraintSolver(Scene scene)
                     perpendicularConstraints,
                     continuityConstraints,
                     targetX,
-                    requestedPosition)
+                    requestedPosition
+                )
             );
 
             if (!res.Converged)
@@ -125,7 +125,7 @@ public sealed class ConstraintSolver(Scene scene)
             }
         }
 
-        return new VariableLayout(vertices, beziers, arcs, values.ToArray());
+        return new VariableLayout(vertices, beziers, arcs, [.. values]);
 
         // ---
         
@@ -293,26 +293,23 @@ public sealed class ConstraintSolver(Scene scene)
             int c = layout.Vertices[constraint.From2];
             int d = layout.Vertices[constraint.To2];
 
-            var pointA = new Point2D(
+            var vecA = new Point2D(
                 values[b] - values[a], 
                 values[b + 1] - values[a + 1]
             );
 
-            var pointB = new Point2D(
+            var vecB = new Point2D(
                 values[d] - values[c], 
                 values[d + 1] - values[c + 1]
             );
 
-            double lengthA = Length(pointA);
-            double lengthB = Length(pointB);
+            double lengthA = Length(vecA);
+            double lengthB = Length(vecB);
 
             if (lengthA < 1e-12 || lengthB < 1e-12)
-            {
-                residuals.Add(ConstraintWeight);
                 continue;
-            }
             
-            double normalizedDot = Dot(pointA, pointB) / (lengthA * lengthB);
+            double normalizedDot = Dot(vecA, vecB) / (lengthA * lengthB);
             residuals.Add(ConstraintWeight * normalizedDot);
         }
         
@@ -336,12 +333,17 @@ public sealed class ConstraintSolver(Scene scene)
                 if (aLength < 1e-12 || bLength < 1e-12)
                 {
                     residuals.Add(ConstraintWeight);
+                    residuals.Add(ConstraintWeight);
                     continue;
                 }
                 
-                // Co-linear -> Cross product == 0
-                double normalizedDot = Dot(incoming, outgoing) / (aLength * bLength);
-                residuals.Add(ConstraintWeight * (1.0 - normalizedDot));
+                double ax = incoming.X / aLength;
+                double ay = incoming.Y / aLength;
+                double bx = outgoing.X / bLength;
+                double by = outgoing.Y / bLength;
+
+                residuals.Add(ConstraintWeight * (ax - bx));
+                residuals.Add(ConstraintWeight * (ay - by));
             }
             else if (continuity.Type == ContinuityType.C1)
             {
@@ -415,23 +417,23 @@ public sealed class ConstraintSolver(Scene scene)
             int c = layout.Vertices[constraint.From2];
             int d = layout.Vertices[constraint.To2];
 
-            var pointA = new Point2D(
+            var vecA = new Point2D(
                 values[b] - values[a], 
                 values[b + 1] - values[a + 1]
             );
 
-            var pointB = new Point2D(
+            var vecB = new Point2D(
                 values[d] - values[c], 
                 values[d + 1] - values[c + 1]
             );
 
-            double lengthA = Length(pointA);
-            double lengthB = Length(pointB);
+            double lengthA = Length(vecA);
+            double lengthB = Length(vecB);
 
             if (lengthA < 1e-12 || lengthB < 1e-12)
-                return false;
+                continue;
 
-            double normalizedDot = Dot(pointA, pointB) / (lengthA * lengthB);
+            double normalizedDot = Dot(vecA, vecB) / (lengthA * lengthB);
 
             if (Math.Abs(normalizedDot) > ConstraintTolerance)
                 return false;
@@ -453,7 +455,7 @@ public sealed class ConstraintSolver(Scene scene)
             double lb = Length(b);
 
             if (la < 1e-12 || lb < 1e-12)
-                return false;
+                continue;
 
             if (continuity.Type == ContinuityType.G1)
             {
