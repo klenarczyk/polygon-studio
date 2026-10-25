@@ -69,13 +69,40 @@ public static class ContinuityHelper
         );
     }
 
+    public static void NormalizeArcBulges(Polygon polygon)
+    {
+        foreach (var edge in polygon.Edges)
+        {
+            if (edge.Geometry is not CircularArcGeometry arc)
+                continue;
+            
+            var start = polygon.Vertices.FirstOrDefault(v => v.Id == edge.FromVertexId);
+            var end = polygon.Vertices.FirstOrDefault(v => v.Id == edge.ToVertexId);
+            
+            if (start is null || end is null)
+                continue;
+            
+            if (start.Continuity != ContinuityType.G0 || end.Continuity != ContinuityType.G0)
+                continue;
+
+            double bulge = arc.Bulge < 0 ? -1.0 : 1.0;
+
+            if (Math.Abs(Math.Abs(arc.Bulge) - 1.0) > 1e-12)
+                edge.Geometry = new CircularArcGeometry(bulge);
+        }
+    }
+    
     public static void ResetInvalid(Scene scene)
     {
         foreach (var polygon in scene.Polygons)
-        foreach (var vertex in polygon.Vertices)
         {
-            if (!CanApply(polygon, vertex.Id, vertex.Continuity))
-                vertex.Continuity = ContinuityType.G0;
+            foreach (var vertex in polygon.Vertices)
+            {
+                if (!CanApply(polygon, vertex.Id, vertex.Continuity))
+                    vertex.Continuity = ContinuityType.G0;
+            }
+            
+            NormalizeArcBulges(polygon);
         }
     }
 }

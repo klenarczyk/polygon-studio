@@ -35,6 +35,7 @@ public static class EdgeContextMenu
             owner,
             editor,
             polygonId, edgeId,
+            currentGeometry,
             invalidateVisual,
             canAddPerpendicularConstraint,
             addPerpendicularConstraint
@@ -95,6 +96,7 @@ public static class EdgeContextMenu
         Control owner,
         EditorService editor,
         Guid polygonId, Guid edgeId,
+        EdgeGeometry currentGeometry,
         Action invalidateVisual,
         bool canAddPerpendicularConstraint,
         Func<bool> addPerpendicularConstraint)
@@ -113,7 +115,7 @@ public static class EdgeContextMenu
             Header = existingFixedLength
                 ? "Fixed edge length already set"
                 : "Fix edge length...",
-            IsEnabled = !existingFixedLength
+            IsEnabled = !existingFixedLength && currentGeometry is LineGeometry
         };
 
         fixedLengthItem.Click += async (_, _) =>

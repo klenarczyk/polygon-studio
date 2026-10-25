@@ -75,8 +75,12 @@ public sealed class EditorService(Scene scene)
         if (start is null || end is null)
             return false;
         
+        Scene.RemoveConstraintsForEdge(polygonId, edgeId);
+        
         edge.Geometry = EdgeGeometryFactory.CreateDefault(start.Value, end.Value, geometryType);
+        
         ContinuityHelper.ResetInvalid(Scene);
+        
         return true;
     }
     
@@ -197,6 +201,9 @@ public sealed class EditorService(Scene scene)
             return false;
 
         vertex.Continuity = type;
+
+        ContinuityHelper.NormalizeArcBulges(polygon);
+        
         return true;
     }
 
