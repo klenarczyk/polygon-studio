@@ -12,7 +12,7 @@ public static class EdgeGeometrySampler
     private const double MaxArcAngleStep = Math.PI / 64;
     private const double MinimumRadius = 1e-9;
 
-    public static IReadOnlyList<Point2D> Sample(EdgeGeometry geometry, Point2D start, Point2D end)
+    public static IEnumerable<Point2D> Sample(EdgeGeometry geometry, Point2D start, Point2D end)
     {
         return geometry switch
         {
@@ -28,34 +28,33 @@ public static class EdgeGeometrySampler
 
     // ---
     
-    private static IReadOnlyList<Point2D> SampleLine(Point2D start, Point2D end)
+    private static IEnumerable<Point2D> SampleLine(Point2D start, Point2D end)
     {
-        return [start, end];
+        yield return start;
+        yield return end;
     }
     
-    // TODO: Understand better
-    private static IReadOnlyList<Point2D> SampleBezier(
+    private static IEnumerable<Point2D> SampleBezier(
         Point2D start, Point2D end,
         CubicBezierGeometry bezier)
     {
+        var cp1 = bezier.ControlPoint1;
+        var cp2 = bezier.ControlPoint2;
+        
         // Convert to power-basis
         var a = new Point2D(
-            -start.X + 3.0 * bezier.ControlPoint1.X
-            - 3.0 * bezier.ControlPoint2.X + end.X,
-            -start.Y + 3.0 * bezier.ControlPoint1.Y
-            - 3.0 * bezier.ControlPoint2.Y + end.Y
+            -start.X + 3.0 * cp1.X - 3.0 * cp2.X + end.X,
+            -start.Y + 3.0 * cp1.Y - 3.0 * cp2.Y + end.Y
         );
 
         var b = new Point2D(
-            3.0 * start.X - 6.0 * bezier.ControlPoint1.X
-            + 3.0 * bezier.ControlPoint2.X,
-            3.0 * start.Y - 6.0 * bezier.ControlPoint1.Y
-            + 3.0 * bezier.ControlPoint2.Y
+            3.0 * start.X - 6.0 * cp1.X + 3.0 * cp2.X,
+            3.0 * start.Y - 6.0 * cp1.Y + 3.0 * cp2.Y
         );
 
         var c = new Point2D(
-            -3.0 * start.X + 3.0 * bezier.ControlPoint1.X,
-            -3.0 * start.Y + 3.0 * bezier.ControlPoint1.Y
+            -3.0 * start.X + 3.0 * cp1.X,
+            -3.0 * start.Y + 3.0 * cp1.Y
         );
 
         const double h = 1.0 / BezierSegments;
@@ -79,8 +78,7 @@ public static class EdgeGeometrySampler
             6.0 * a.Y * h3
         );
 
-        var points = new Point2D[BezierSegments + 1];
-        points[0] = start;
+        yield return start;
 
         for (var i = 1; i < BezierSegments; i++)
         {
@@ -88,14 +86,13 @@ public static class EdgeGeometrySampler
             firstDiff += secondDiff;
             secondDiff += thirdDiff;
 
-            points[i] = current;
+            yield return current;
         }
-        
-        points[BezierSegments] = end;
-        return points;
+
+        yield return end;
     }
     
-    private static IReadOnlyList<Point2D> SampleArc(
+    private static IEnumerable<Point2D> SampleArc(
         Point2D start,
         Point2D end,
         CircularArcGeometry arc)
@@ -103,7 +100,10 @@ public static class EdgeGeometrySampler
         if (!CircularArcMath.TryGetParameters(start, end, arc, out var parameters)
             || parameters.Radius < MinimumRadius)
         {
-            return SampleLine(start, end);
+            foreach (var point in SampleLine(start, end))
+                yield return point;
+
+            yield break;
         }
 
         int segments = Math.Max(
@@ -111,21 +111,19 @@ public static class EdgeGeometrySampler
             (int)Math.Ceiling(Math.Abs(parameters.SweepAngleRadians) / MaxArcAngleStep)
         );
 
-        var points = new Point2D[segments + 1];
-        points[0] = start;
+        yield return start;
 
         for (var i = 1; i < segments; i++)
         {
             double t = (double)i / segments;
             double angle = parameters.StartAngleRadians + parameters.SweepAngleRadians * t;
 
-            points[i] = new Point2D(
+            yield return new Point2D(
                 parameters.Center.X + parameters.Radius * Math.Cos(angle),
                 parameters.Center.Y + parameters.Radius * Math.Sin(angle)
             );
         }
 
-        points[segments] = end;
-        return points;
+        yield return end;
     }
 }

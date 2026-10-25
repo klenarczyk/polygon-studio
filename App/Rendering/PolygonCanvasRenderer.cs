@@ -31,11 +31,12 @@ public static class PolygonCanvasRenderer
         Scene scene,
         ViewTransform transform,
         CanvasSelection selection,
-        DragState dragState)
+        DragState dragState,
+        LineDrawingAlgorithm lineDrawingAlgorithm)
     {
         var annotations = BuildConstraintAnnotations(scene);
 
-        DrawEdges(context, scene, transform, selection, annotations);
+        DrawEdges(context, scene, transform, selection, annotations, lineDrawingAlgorithm);
         DrawControlPoints(context, scene, transform, dragState);
         DrawVertices(context, scene, transform, selection, dragState);
     }
@@ -119,7 +120,8 @@ public static class PolygonCanvasRenderer
         Scene scene, 
         ViewTransform transform, 
         CanvasSelection selection, 
-        ConstraintAnnotations annotations)
+        ConstraintAnnotations annotations,
+        LineDrawingAlgorithm lineDrawingAlgorithm)
     {
         foreach (var polygon in scene.Polygons)
         {
@@ -142,7 +144,12 @@ public static class PolygonCanvasRenderer
                 switch (edge.Geometry)
                 {
                     case LineGeometry:
-                        context.DrawLine(pen, start, end);
+                        EdgeGeometryRenderer.DrawLine(
+                            context,
+                            pen,
+                            start, end,
+                            lineDrawingAlgorithm
+                        );
                         break;
 
                     case CubicBezierGeometry bezier:
@@ -153,7 +160,8 @@ public static class PolygonCanvasRenderer
                             transform,
                             from.Position,
                             to.Position,
-                            bezier
+                            bezier,
+                            lineDrawingAlgorithm
                         );
                         break;
 
@@ -164,7 +172,8 @@ public static class PolygonCanvasRenderer
                             transform,
                             from.Position,
                             to.Position,
-                            arc
+                            arc,
+                            lineDrawingAlgorithm
                         );
                         break;
                 }

@@ -14,7 +14,22 @@
         <viewModels:MainViewModel />
     </Design.DataContext>
 
-    <Grid>
-        <controls:PolygonCanvas x:Name="Canvas" />
+    <Grid RowDefinitions="Auto, *">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" ZIndex="50">
+            <TextBlock Text="Line drawing algorithm:" VerticalAlignment="Center" Padding="8, 0" />
+
+            <RadioButton
+                Content="Avalonia"
+                GroupName="LineDrawingAlgorithm"
+                IsChecked="True"
+                Click="OnAvaloniaLineDrawingClick" />
+
+            <RadioButton
+                Content="Bresenham"
+                GroupName="LineDrawingAlgorithm"
+                Click="OnBresenhamLineDrawingClick" />
+        </StackPanel>
+        
+        <controls:PolygonCanvas x:Name="Canvas" Grid.Row="1" />
     </Grid>
 </Window>

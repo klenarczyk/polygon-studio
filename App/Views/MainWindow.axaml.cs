@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using PolygonStudio.App.Rendering;
 using PolygonStudio.App.ViewModels;
 using PolygonStudio.Core.Model;
 using PolygonStudio.Core.Services;
@@ -17,5 +19,15 @@ public partial class MainWindow : Window
         
         Canvas.Scene = _viewModel.Scene;
         Canvas.Editor = _viewModel.Editor;
+    }
+    
+    private void OnAvaloniaLineDrawingClick(object? sender, RoutedEventArgs e)
+    {
+        Canvas.LineDrawingAlgorithm = LineDrawingAlgorithm.Avalonia;
+    }
+
+    private void OnBresenhamLineDrawingClick(object? sender, RoutedEventArgs e)
+    {
+        Canvas.LineDrawingAlgorithm = LineDrawingAlgorithm.Bresenham;
     }
 }

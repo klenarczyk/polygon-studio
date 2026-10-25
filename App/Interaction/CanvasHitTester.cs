@@ -92,11 +92,18 @@ public sealed class CanvasHitTester(Scene scene, ViewTransform transform)
             var samples = EdgeGeometrySampler.Sample(
                 edge.Geometry, from.Position, to.Position
             );
-
-            for (var i = 1; i < samples.Count; i++)
+            
+            Point2D? prev = null;
+            foreach (var sample in samples)
             {
-                var a = transform.WorldToCanvas(samples[i - 1]);
-                var b = transform.WorldToCanvas(samples[i]);
+                if (prev is null)
+                {
+                    prev = sample;
+                    continue;
+                }
+                
+                var a = transform.WorldToCanvas(prev.Value);
+                var b = transform.WorldToCanvas(sample);
 
                 double distanceSquared = DistanceSquaredToSegment(screenPoint, a, b);
 
@@ -105,6 +112,8 @@ public sealed class CanvasHitTester(Scene scene, ViewTransform transform)
 
                 bestDistanceSquared = distanceSquared;
                 bestHit = (polygon, edge);
+
+                prev = sample;
             }
         }
 

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
 using PolygonStudio.App.ContextMenus;
@@ -23,6 +24,17 @@ public sealed class PolygonCanvas : Control
 {
     public Scene? Scene { get; set; }
     public EditorService? Editor { get; set; }
+
+    public LineDrawingAlgorithm LineDrawingAlgorithm
+    {
+        get;
+        set
+        {
+            if (field == value) return;
+            field = value;
+            InvalidateVisual();
+        }
+    } = LineDrawingAlgorithm.Avalonia;
 
     private readonly CanvasViewport _viewport = new();
     private readonly CanvasInteractionController _interaction = new();
@@ -45,7 +57,8 @@ public sealed class PolygonCanvas : Control
             Scene,
             transform,
             _interaction.Selection,
-            _interaction.Drag
+            _interaction.Drag,
+            LineDrawingAlgorithm
         );
     }
 
