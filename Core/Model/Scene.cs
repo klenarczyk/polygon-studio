@@ -68,6 +68,15 @@ public class Scene
         Initialize();
     }
     
+    internal void RestoreContents(IReadOnlyList<Polygon> polygons, IReadOnlyList<IConstraint> constraints)
+    {
+        _polygons.Clear();
+        _polygons.AddRange(polygons);
+
+        _constraints.Clear();
+        _constraints.AddRange(constraints);
+    }
+    
     // ---
 
     private void Initialize()
@@ -86,19 +95,8 @@ public class Scene
             new Point2D(100.0, 50.0)
         ]);
         
-        // polygon1.Edges[0].Geometry = new CubicBezierGeometry(
-        //     new Point2D(-100.0, 25.0),
-        //     new Point2D(-55.0, 25.0)
-        // );
-        //
-        // polygon2.Edges[0].Geometry = CircularArcGeometry.CreateSemicircle();
-        //
-        // var constraint = new FixedEdgeLengthConstraint(polygon1.Id, polygon1.Edges[2].Id, 90.0);
-        
         _polygons.Add(polygon1);
         _polygons.Add(polygon2);
-        
-        // _constraints.Add(constraint);
     }
     
     private bool IsValidFixedLengthConstraint(FixedLengthConstraint constraint)
@@ -119,11 +117,8 @@ public class Scene
 
     private bool IsValidPerpendicularConstraint(PerpendicularConstraint constraint)
     {
-        if (constraint.PolygonId1 == constraint.PolygonId2 &&
-            constraint.EdgeId1 == constraint.EdgeId2)
-        {
+        if (constraint.PolygonId1 == constraint.PolygonId2 && constraint.EdgeId1 == constraint.EdgeId2)
             return false;
-        }
 
         var polygon1 = _polygons.FirstOrDefault(p => p.Id == constraint.PolygonId1);
         var polygon2 = _polygons.FirstOrDefault(p => p.Id == constraint.PolygonId2);
@@ -135,9 +130,7 @@ public class Scene
             return false;
         
         if (edge1.Geometry is not LineGeometry || edge2.Geometry is not LineGeometry)
-        {
             return false;
-        }
 
         return !_constraints
             .OfType<PerpendicularConstraint>()

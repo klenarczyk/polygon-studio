@@ -59,4 +59,15 @@ public sealed class Polygon
         var edge = _edges.FirstOrDefault(e => e.Id == id);
         return edge is not null && _edges.Remove(edge);
     }
+    
+    
+    internal void RestoreContents(IReadOnlyList<Vertex> vertices, IReadOnlyList<Edge> edges)
+    {
+        _vertices.Clear();
+        _vertices.AddRange(vertices);
+
+        _edges.Clear();
+        _edges.AddRange(edges);
+    }
+
 }

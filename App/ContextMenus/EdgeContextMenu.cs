@@ -156,6 +156,7 @@ public static class EdgeContextMenu
             if (existingFixedLength != null)
             {
                 editor.UpdateFixedEdgeLengthConstraint(existingFixedLength, length);
+                invalidateVisual();
             }
             else if (editor.AddFixedEdgeLengthConstraint(polygonId, edgeId, length))
             {
