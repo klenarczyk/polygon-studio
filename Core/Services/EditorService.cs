@@ -14,6 +14,8 @@ public sealed class EditorService(Scene scene)
     public bool MoveVertex(Guid polygonId, Guid vertexId, Point2D newPosition) =>
         _solver.TryMoveTarget(MoveTarget.Vertex(polygonId, vertexId), newPosition);
 
+    public bool SolveCurrentScene() => _solver.TrySolveCurrentScene();
+    
     public bool MoveBezierControlPoint(
         Guid polygonId,
         Guid edgeId,
@@ -56,7 +58,7 @@ public sealed class EditorService(Scene scene)
   
         ContinuityHelper.ResetInvalid(Scene);
         
-        return true;
+        return SolveCurrentScene();
     }
     
     public bool SetEdgeGeometry(Guid polygonId, Guid edgeId, Type geometryType)
@@ -75,6 +77,22 @@ public sealed class EditorService(Scene scene)
         if (start is null || end is null)
             return false;
         
+        // - Temporary solution -
+        
+        var previousGeometries = polygon.Edges.ToDictionary(
+            e => e.Id, e => e.Geometry);
+
+        var previousContinuities = polygon.Vertices.ToDictionary(
+            v => v.Id, v => v.Continuity);
+
+        var removedConstraints = Scene.Constraints
+            .Where(c => 
+                (c is FixedLengthConstraint fixedLength && fixedLength.EdgeId == edge.Id) || 
+                (c is PerpendicularConstraint perp && (perp.EdgeId1 == edgeId || perp.EdgeId2 == edgeId)))
+            .ToList();
+        
+        // - -
+        
         Scene.RemoveConstraintsForEdge(polygonId, edgeId);
         
         edge.Geometry = EdgeGeometryFactory.CreateDefault(start.Position, end.Position, geometryType);
@@ -85,7 +103,28 @@ public sealed class EditorService(Scene scene)
         ContinuityHelper.ResetInvalid(Scene);
         ContinuityHelper.NormalizeArcBulges(polygon);
         
-        return true;
+        if (SolveCurrentScene())
+            return true;
+
+        // - Temporary solution -
+        foreach (var polygonEdge in polygon.Edges)
+        {
+            if (previousGeometries.TryGetValue(polygonEdge.Id, out var geometry))
+                polygonEdge.Geometry = geometry;
+        }
+
+        foreach (var vertex in polygon.Vertices)
+        {
+            if (previousContinuities.TryGetValue(vertex.Id, out var continuity))
+                vertex.Continuity = continuity;
+        }
+        
+        foreach (var constraint in removedConstraints)
+            Scene.TryAddConstraint(constraint);
+
+        // - -
+        
+        return false;
     }
     
     public bool RemoveVertex(Guid polygonId, Guid vertexId)
@@ -115,7 +154,7 @@ public sealed class EditorService(Scene scene)
         
         ContinuityHelper.ResetInvalid(Scene);
         
-        return true;
+        return SolveCurrentScene();
     }
     
     public bool MovePolygon(Guid polygonId, Point2D delta)
@@ -162,7 +201,14 @@ public sealed class EditorService(Scene scene)
 
         var constraint = new FixedLengthConstraint(polygonId, edgeId, length);
 
-        return Scene.TryAddConstraint(constraint); // TODO: Make the solver move the vertices accordingly
+        if (!Scene.TryAddConstraint(constraint))
+            return false;
+        
+        if (SolveCurrentScene())
+            return true;
+
+        Scene.RemoveConstraint(constraint.Id);
+        return false;
     }
 
     public bool UpdateFixedEdgeLengthConstraint(FixedLengthConstraint fixedLength, double length)
@@ -170,8 +216,14 @@ public sealed class EditorService(Scene scene)
         if (length <= 0)
             return false;
 
+        double previousLength = fixedLength.Length;
         fixedLength.Length = length;
-        return true;
+
+        if (SolveCurrentScene())
+            return true;
+
+        fixedLength.Length = previousLength;
+        return false;
     }
     
     public bool AddPerpendicularConstraint(
@@ -194,9 +246,16 @@ public sealed class EditorService(Scene scene)
         if (polygonId1 == polygonId2 && edgeId1 == edgeId2)
             return false;
 
-        return Scene.TryAddConstraint(new PerpendicularConstraint(
-                polygonId1, edgeId1, polygonId2, edgeId2)
-        );
+        var constraint = new PerpendicularConstraint(polygonId1, edgeId1, polygonId2, edgeId2);
+
+        if (!Scene.TryAddConstraint(constraint))
+            return false;
+
+        if (SolveCurrentScene())
+            return true;
+
+        Scene.RemoveConstraint(constraint.Id);
+        return false;
     }
     
     public bool RemoveConstraint(Guid constraintId) =>
@@ -213,11 +272,25 @@ public sealed class EditorService(Scene scene)
         if (!ContinuityHelper.CanApply(polygon, vertexId, type))
             return false;
 
-        vertex.Continuity = type;
+        var previousContinuity = vertex.Continuity;
+        var previousGeometries = polygon.Edges
+            .ToDictionary(e => e.Id, e => e.Geometry);
 
+        vertex.Continuity = type;
         ContinuityHelper.NormalizeArcBulges(polygon);
-        
-        return true;
+
+        if (SolveCurrentScene())
+            return true;
+
+        vertex.Continuity = previousContinuity;
+
+        foreach (var edge in polygon.Edges)
+        {
+            if (previousGeometries.TryGetValue(edge.Id, out var geometry))
+                edge.Geometry = geometry;
+        }
+
+        return false;
     }
 
     public ContinuityType? GetVertexContinuity(Guid polygonId, Guid vertexId)

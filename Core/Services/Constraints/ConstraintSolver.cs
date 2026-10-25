@@ -82,6 +82,64 @@ public sealed class ConstraintSolver(Scene scene)
         Commit(candidate, layout);
         return true;
     }
+
+    public bool TrySolveCurrentScene()
+    {
+        var layout = BuildLayout();
+
+        var fixedConstraints = ResolveFixedConstraints();
+        if (fixedConstraints is null)
+            return false;
+        
+        var perpendicularConstraints = ResolvePerpendicularConstraints();
+        if (perpendicularConstraints is null)
+            return false;
+
+        var continuityConstraints = ResolveContinuities();
+        if (continuityConstraints is null)
+            return false;
+
+        double[] initial = layout.Initial;
+        double[] candidate;
+
+        try
+        {
+            var res = _numericalSolver.Solve(
+                initial,
+                values => Residuals(
+                    values,
+                    layout,
+                    fixedConstraints,
+                    perpendicularConstraints,
+                    continuityConstraints
+                )
+            );
+
+            if (!res.Converged)
+            {
+                return false;
+            }
+
+            candidate = res.Variables;
+
+            if (!ValidateCandidate(
+                    candidate,
+                    layout,
+                    fixedConstraints,
+                    perpendicularConstraints,
+                    continuityConstraints))
+            {
+                return false;
+            }
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+        
+        Commit(candidate, layout);
+        return true;
+    }
     
     private VariableLayout BuildLayout()
     {
@@ -262,14 +320,116 @@ public sealed class ConstraintSolver(Scene scene)
         return result;
     }
 
+    private static bool ValidateCandidate(
+        double[] values,
+        VariableLayout layout,
+        IReadOnlyList<ResolvedFixedConstraint> fixedConstraints,
+        IReadOnlyList<ResolvedPerpendicularConstraint> perpendicularConstraints,
+        IReadOnlyList<ResolvedContinuity> continuities,
+        int? targetX = null,
+        Point2D? requestedPosition = null)
+    {
+        if (values.Length != layout.Initial.Length)
+            return false;
+
+        if (targetX is not null && requestedPosition is { } pos)
+        {
+            double targetDx = values[targetX.Value] - pos.X;
+            double targetDy = values[targetX.Value + 1] - pos.Y;
+
+            if (targetDx * targetDx + targetDy * targetDy > TargetTolerance * TargetTolerance)
+                return false;
+        }
+        
+        foreach (var constraint in fixedConstraints)
+        {
+            int from = layout.Vertices[constraint.FromKey];
+            int to = layout.Vertices[constraint.ToKey];
+
+            double dx = values[to] - values[from];
+            double dy = values[to + 1] - values[from + 1];
+            double length = Math.Sqrt(dx * dx + dy * dy);
+
+            double tolerance = ConstraintTolerance * Math.Max(1.0, constraint.EdgeLength);
+
+            if (Math.Abs(length - constraint.EdgeLength) > tolerance)
+                return false;
+        }
+
+        foreach (var constraint in perpendicularConstraints)
+        {
+            int a = layout.Vertices[constraint.From1];
+            int b = layout.Vertices[constraint.To1];
+            int c = layout.Vertices[constraint.From2];
+            int d = layout.Vertices[constraint.To2];
+
+            var vecA = new Point2D(
+                values[b] - values[a], 
+                values[b + 1] - values[a + 1]
+            );
+
+            var vecB = new Point2D(
+                values[d] - values[c], 
+                values[d + 1] - values[c + 1]
+            );
+
+            double lengthA = Length(vecA);
+            double lengthB = Length(vecB);
+
+            if (lengthA < 1e-12 || lengthB < 1e-12)
+                continue;
+
+            double normalizedDot = Dot(vecA, vecB) / (lengthA * lengthB);
+
+            if (Math.Abs(normalizedDot) > ConstraintTolerance)
+                return false;
+        }
+        
+        foreach (var continuity in continuities)
+        {
+            var a = Derivative(
+                values, layout, continuity.Polygon,
+                continuity.Incoming, true
+            );
+
+            var b = Derivative(
+                values, layout, continuity.Polygon,
+                continuity.Outgoing, false
+            );
+
+            double la = Length(a);
+            double lb = Length(b);
+
+            if (la < 1e-12 || lb < 1e-12)
+                continue;
+
+            if (continuity.Type == ContinuityType.G1)
+            {
+                double normalizedCross = Math.Abs(Cross(a, b)) / (la * lb);
+
+                if (normalizedCross > ContinuityTolerance || Dot(a, b) <= 0)
+                    return false;
+            }
+            else if (continuity.Type == ContinuityType.C1)
+            {
+                double error = Length(new Point2D(a.X - b.X, a.Y - b.Y));
+
+                if (error > ContinuityTolerance * Math.Max(1.0, Math.Max(la, lb)))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
     private static double[] Residuals(
         double[] values,
         VariableLayout layout,
         IReadOnlyList<ResolvedFixedConstraint> fixedConstraints,
         IReadOnlyList<ResolvedPerpendicularConstraint> perpendicularConstraints,
         IReadOnlyList<ResolvedContinuity> continuities,
-        int targetX,
-        Point2D requestedPosition)
+        int? targetX = null,
+        Point2D? requestedPosition = null)
     {
         var residuals = new List<double>();
 
@@ -352,12 +512,15 @@ public sealed class ConstraintSolver(Scene scene)
             }
         }
         
-        residuals.Add(TargetWeight * (values[targetX] - requestedPosition.X));
-        residuals.Add(TargetWeight * (values[targetX + 1] - requestedPosition.Y));
+        if (targetX is not null && requestedPosition is { } pos)
+        {
+            residuals.Add(TargetWeight * (values[targetX.Value] - pos.X));
+            residuals.Add(TargetWeight * (values[targetX.Value + 1] - pos.Y));
+        }
         
         for (var i = 0; i < values.Length; i++)
         {
-            if (i == targetX || i == targetX + 1)
+            if (targetX is not null && (i == targetX.Value || i == targetX.Value + 1))
                 continue;
 
             bool isControlPoint = layout.Beziers.Values.Any(cp =>
@@ -377,105 +540,6 @@ public sealed class ConstraintSolver(Scene scene)
         return [.. residuals];
     }
 
-    private static bool ValidateCandidate(
-        double[] values,
-        VariableLayout layout,
-        IReadOnlyList<ResolvedFixedConstraint> fixedConstraints,
-        IReadOnlyList<ResolvedPerpendicularConstraint> perpendicularConstraints,
-        IReadOnlyList<ResolvedContinuity> continuities,
-        int targetX,
-        Point2D requestedPosition)
-    {
-        if (values.Length != layout.Initial.Length)
-            return false;
-
-        double targetDx = values[targetX] - requestedPosition.X;
-        double targetDy = values[targetX + 1] - requestedPosition.Y;
-
-        if (targetDx * targetDx + targetDy * targetDy > TargetTolerance * TargetTolerance)
-            return false;
-        
-        foreach (var constraint in fixedConstraints)
-        {
-            int from = layout.Vertices[constraint.FromKey];
-            int to = layout.Vertices[constraint.ToKey];
-
-            double dx = values[to] - values[from];
-            double dy = values[to + 1] - values[from + 1];
-            double length = Math.Sqrt(dx * dx + dy * dy);
-
-            double tolerance = ConstraintTolerance * Math.Max(1.0, constraint.EdgeLength);
-
-            if (Math.Abs(length - constraint.EdgeLength) > tolerance)
-                return false;
-        }
-
-        foreach (var constraint in perpendicularConstraints)
-        {
-            int a = layout.Vertices[constraint.From1];
-            int b = layout.Vertices[constraint.To1];
-            int c = layout.Vertices[constraint.From2];
-            int d = layout.Vertices[constraint.To2];
-
-            var vecA = new Point2D(
-                values[b] - values[a], 
-                values[b + 1] - values[a + 1]
-            );
-
-            var vecB = new Point2D(
-                values[d] - values[c], 
-                values[d + 1] - values[c + 1]
-            );
-
-            double lengthA = Length(vecA);
-            double lengthB = Length(vecB);
-
-            if (lengthA < 1e-12 || lengthB < 1e-12)
-                continue;
-
-            double normalizedDot = Dot(vecA, vecB) / (lengthA * lengthB);
-
-            if (Math.Abs(normalizedDot) > ConstraintTolerance)
-                return false;
-        }
-        
-        foreach (var continuity in continuities)
-        {
-            var a = Derivative(
-                values, layout, continuity.Polygon,
-                continuity.Incoming, true
-            );
-
-            var b = Derivative(
-                values, layout, continuity.Polygon,
-                continuity.Outgoing, false
-            );
-
-            double la = Length(a);
-            double lb = Length(b);
-
-            if (la < 1e-12 || lb < 1e-12)
-                continue;
-
-            if (continuity.Type == ContinuityType.G1)
-            {
-                double normalizedCross = Math.Abs(Cross(a, b)) / (la * lb);
-
-                if (normalizedCross > ContinuityTolerance || Dot(a, b) <= 0)
-                    return false;
-            }
-            else if (continuity.Type == ContinuityType.C1)
-            {
-                double error = Length(new Point2D(a.X - b.X, a.Y - b.Y));
-
-                if (error > ContinuityTolerance * Math.Max(1.0, Math.Max(la, lb)))
-                    return false;
-            }
-        }
-
-        return true;
-    }
-    
     private void Commit(double[] values, VariableLayout layout)
     {
         foreach (var polygon in scene.Polygons)

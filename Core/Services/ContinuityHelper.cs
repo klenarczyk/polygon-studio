@@ -101,17 +101,7 @@ public static class ContinuityHelper
             return;
         
         if (CanApply(polygon, vertexId, ContinuityType.C1))
-        {
             vertex.Continuity = ContinuityType.C1;
-        }
-        else if (CanApply(polygon, vertexId, ContinuityType.G1))
-        {
-            vertex.Continuity = ContinuityType.G1;
-        }
-        else
-        {
-            vertex.Continuity = ContinuityType.G0;
-        }
     }
     
     public static void ResetInvalid(Scene scene)
