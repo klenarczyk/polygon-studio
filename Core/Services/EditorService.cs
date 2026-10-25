@@ -161,6 +161,15 @@ public sealed class EditorService(Scene scene)
         return Scene.TryAddConstraint(constraint); // TODO: Make the solver move the vertices accordingly
     }
 
+    public bool UpdateFixedEdgeLengthConstraint(FixedLengthConstraint fixedLength, double length)
+    {
+        if (length <= 0)
+            return false;
+
+        fixedLength.Length = length;
+        return true;
+    }
+    
     public bool AddPerpendicularConstraint(
         Guid polygonId1, Guid edgeId1,
         Guid polygonId2, Guid edgeId2)

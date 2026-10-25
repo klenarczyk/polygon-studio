@@ -6,7 +6,7 @@ public sealed class FixedLengthConstraint : IConstraint
     
     public Guid PolygonId { get; }
     public Guid EdgeId { get; }
-    public double Length { get; }
+    public double Length { get; internal set; }
     
     public FixedLengthConstraint(Guid polygonId, Guid edgeId, double length)
     {

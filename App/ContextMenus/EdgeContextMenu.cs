@@ -43,6 +43,16 @@ public static class EdgeContextMenu
 
         var splitItem = CreateSplitItem(editor, polygonId, edgeId, invalidateVisual);
         
+        var removeMenu = CreateRemoveConstraintMenu(
+            editor,
+            polygonId,
+            edgeId,
+            invalidateVisual
+        );
+        
+        constraintMenu.Items.Add(new Separator());
+        constraintMenu.Items.Add(removeMenu);
+        
         // ---
         
         menu.Items.Add(geometryMenu);
@@ -106,16 +116,14 @@ public static class EdgeContextMenu
             Header = "Constraints"
         };
         
-        bool existingFixedLength = editor.Scene.Constraints
+        var existingFixedLength = editor.Scene.Constraints
             .OfType<FixedLengthConstraint>()
-            .Any(c => c.PolygonId == polygonId && c.EdgeId == edgeId);
+            .FirstOrDefault(c => c.PolygonId == polygonId && c.EdgeId == edgeId);
 
         var fixedLengthItem = new MenuItem
         {
-            Header = existingFixedLength
-                ? "Fixed edge length already set"
-                : "Fix edge length...",
-            IsEnabled = !existingFixedLength && currentGeometry is LineGeometry
+            Header = "Fix edge length...",
+            IsEnabled = currentGeometry is LineGeometry
         };
 
         fixedLengthItem.Click += async (_, _) =>
@@ -145,7 +153,11 @@ public static class EdgeContextMenu
             if (dialog.AcceptedLength is not { } length)
                 return;
 
-            if (editor.AddFixedEdgeLengthConstraint(polygonId, edgeId, length))
+            if (existingFixedLength != null)
+            {
+                editor.UpdateFixedEdgeLengthConstraint(existingFixedLength, length);
+            }
+            else if (editor.AddFixedEdgeLengthConstraint(polygonId, edgeId, length))
             {
                 invalidateVisual();
             }
@@ -190,6 +202,58 @@ public static class EdgeContextMenu
         };
 
         return splitItem;
+    }
+    
+    private static MenuItem CreateRemoveConstraintMenu(
+        EditorService editor,
+        Guid polygonId,
+        Guid edgeId,
+        Action invalidateVisual)
+    {
+        var removeMenu = new MenuItem
+        {
+            Header = "Remove constraint"
+        };
+
+        var constraints = editor.Scene.Constraints
+            .Where(c =>
+                (c is FixedLengthConstraint fixedLength &&
+                 fixedLength.PolygonId == polygonId &&
+                 fixedLength.EdgeId == edgeId) ||
+                (c is PerpendicularConstraint perpendicular &&
+                 (
+                     (perpendicular.PolygonId1 == polygonId &&
+                      perpendicular.EdgeId1 == edgeId)
+                     ||
+                     (perpendicular.PolygonId2 == polygonId &&
+                      perpendicular.EdgeId2 == edgeId)
+                 )))
+            .ToList();
+
+        foreach (var constraint in constraints)
+        {
+            var item = new MenuItem
+            {
+                Header = constraint switch
+                {
+                    FixedLengthConstraint => "Fixed length",
+                    PerpendicularConstraint => "Perpendicular",
+                    _ => constraint.GetType().Name
+                }
+            };
+
+            item.Click += (_, _) =>
+            {
+                if (editor.RemoveConstraint(constraint.Id))
+                    invalidateVisual();
+            };
+
+            removeMenu.Items.Add(item);
+        }
+
+        removeMenu.IsEnabled = removeMenu.Items.Count > 0;
+
+        return removeMenu;
     }
     
     // ---
