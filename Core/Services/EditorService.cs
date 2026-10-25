@@ -69,17 +69,21 @@ public sealed class EditorService(Scene scene)
         if (edge.Geometry.GetType() == geometryType)
             return true;
 
-        var start = polygon.Vertices.FirstOrDefault(v => v.Id == edge.FromVertexId)?.Position;
-        var end = polygon.Vertices.FirstOrDefault(v => v.Id == edge.ToVertexId)?.Position;
+        var start = polygon.Vertices.FirstOrDefault(v => v.Id == edge.FromVertexId);
+        var end = polygon.Vertices.FirstOrDefault(v => v.Id == edge.ToVertexId);
 
         if (start is null || end is null)
             return false;
         
         Scene.RemoveConstraintsForEdge(polygonId, edgeId);
         
-        edge.Geometry = EdgeGeometryFactory.CreateDefault(start.Value, end.Value, geometryType);
+        edge.Geometry = EdgeGeometryFactory.CreateDefault(start.Position, end.Position, geometryType);
+        
+        ContinuityHelper.UpdateForGeometryChange(polygon, start.Id);
+        ContinuityHelper.UpdateForGeometryChange(polygon, end.Id);
         
         ContinuityHelper.ResetInvalid(Scene);
+        ContinuityHelper.NormalizeArcBulges(polygon);
         
         return true;
     }

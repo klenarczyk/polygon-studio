@@ -92,6 +92,28 @@ public static class ContinuityHelper
         }
     }
     
+    public static void UpdateForGeometryChange(Polygon polygon, Guid vertexId)
+    {
+        var vertex = polygon.Vertices.FirstOrDefault(v => v.Id == vertexId);
+        if (vertex is null) return;
+        
+        if (vertex.Continuity != ContinuityType.G0 && CanApply(polygon, vertexId, vertex.Continuity))
+            return;
+        
+        if (CanApply(polygon, vertexId, ContinuityType.C1))
+        {
+            vertex.Continuity = ContinuityType.C1;
+        }
+        else if (CanApply(polygon, vertexId, ContinuityType.G1))
+        {
+            vertex.Continuity = ContinuityType.G1;
+        }
+        else
+        {
+            vertex.Continuity = ContinuityType.G0;
+        }
+    }
+    
     public static void ResetInvalid(Scene scene)
     {
         foreach (var polygon in scene.Polygons)
