@@ -19,8 +19,11 @@ public static class ContinuityHelper
             && incoming.Id != outgoing.Id;
     }
 
-    public static bool CanApply(Polygon polygon, Guid vertexId, ContinuityType type)
+    public static bool CanApply(Polygon? polygon, Guid vertexId, ContinuityType type)
     {
+        if (polygon is null)
+            return false;
+        
         if (!TryResolveAdjacentEdges(polygon, vertexId, out var incoming, out var outgoing))
             return false;
 

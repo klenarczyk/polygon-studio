@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using Avalonia.Controls;
 using PolygonStudio.Core.Constraints;
 using PolygonStudio.Core.Services;
@@ -41,6 +42,7 @@ public static class VertexContextMenu
             Header = "Continuity"
         };
         
+        var polygon = editor.Scene.Polygons.FirstOrDefault(p => p.Id == polygonId);
         var currentType = editor.GetVertexContinuity(polygonId, vertexId);
         
         foreach (var type in Enum.GetValues<ContinuityType>())
@@ -48,7 +50,7 @@ public static class VertexContextMenu
             var item = new MenuItem
             {
                 Header = type.ToString(),
-                IsEnabled = true,
+                IsEnabled = currentType != type && ContinuityHelper.CanApply(polygon, vertexId, type),
                 IsChecked = currentType == type
             };
 
