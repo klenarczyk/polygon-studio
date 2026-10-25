@@ -1,14 +1,16 @@
 ﻿namespace PolygonStudio.Core.Constraints;
 
-public sealed class PerpendicularEdgesConstraint : Constraint
+public sealed class PerpendicularConstraint : IConstraint
 {
+    public Guid Id { get; } = Guid.NewGuid();
+    
     public Guid PolygonId1 { get; }
     public Guid EdgeId1 { get; }
     
     public Guid PolygonId2 { get; }
     public Guid EdgeId2 { get; }
     
-    public PerpendicularEdgesConstraint(
+    public PerpendicularConstraint(
         Guid polygonId1, Guid edgeId1,
         Guid polygonId2, Guid edgeId2)
     {

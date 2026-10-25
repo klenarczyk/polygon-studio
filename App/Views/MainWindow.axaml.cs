@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using PolygonStudio.App.ViewModels;
 using PolygonStudio.Core.Model;
 using PolygonStudio.Core.Services;
 
@@ -6,14 +7,15 @@ namespace PolygonStudio.App.Views;
 
 public partial class MainWindow : Window
 {
+    private readonly MainViewModel _viewModel;
+    
     public MainWindow()
     {
         InitializeComponent();
 
-        var scene = new Scene();
-        var editorService = new EditorService(scene);
+        _viewModel = new MainViewModel();
         
-        Canvas.Scene = scene;
-        Canvas.Editor = editorService;
+        Canvas.Scene = _viewModel.Scene;
+        Canvas.Editor = _viewModel.Editor;
     }
 }

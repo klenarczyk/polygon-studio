@@ -1,6 +1,9 @@
-﻿using PolygonStudio.Core.Model.Geometries;
+﻿using System;
+using System.Collections.Generic;
+using PolygonStudio.Core.Geometry;
+using PolygonStudio.Core.Model.Geometries;
 
-namespace PolygonStudio.Core.Geometry;
+namespace PolygonStudio.App.Rendering;
 
 public static class EdgeGeometrySampler
 {

@@ -1,10 +1,11 @@
 ﻿using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Media;
+using PolygonStudio.App.Viewport;
 using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model.Geometries;
 
-namespace PolygonStudio.App.Controls.Canvas;
+namespace PolygonStudio.App.Rendering;
 
 public static class EdgeGeometryRenderer
 {
@@ -18,10 +19,10 @@ public static class EdgeGeometryRenderer
         CubicBezierGeometry bezier)
     {
         // Control polygon
-        var p0 = transform.ToScreen(start);
-        var p1 = transform.ToScreen(bezier.ControlPoint1);
-        var p2 = transform.ToScreen(bezier.ControlPoint2);
-        var p3 = transform.ToScreen(end);
+        var p0 = transform.WorldToCanvas(start);
+        var p1 = transform.WorldToCanvas(bezier.ControlPoint1);
+        var p2 = transform.WorldToCanvas(bezier.ControlPoint2);
+        var p3 = transform.WorldToCanvas(end);
         
         context.DrawLine(controlPen, p0, p1);
         context.DrawLine(controlPen, p1, p2);
@@ -78,8 +79,8 @@ public static class EdgeGeometryRenderer
         {
             context.DrawLine(
                 pen,
-                transform.ToScreen(points[i - 1]),
-                transform.ToScreen(points[i])
+                transform.WorldToCanvas(points[i - 1]),
+                transform.WorldToCanvas(points[i])
             );
         }
     }

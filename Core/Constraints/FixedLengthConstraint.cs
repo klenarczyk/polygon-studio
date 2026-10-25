@@ -1,12 +1,14 @@
 ﻿namespace PolygonStudio.Core.Constraints;
 
-public sealed class FixedEdgeLengthConstraint : Constraint
+public sealed class FixedLengthConstraint : IConstraint
 {
+    public Guid Id { get; } = Guid.NewGuid();
+    
     public Guid PolygonId { get; }
     public Guid EdgeId { get; }
     public double Length { get; }
     
-    public FixedEdgeLengthConstraint(Guid polygonId, Guid edgeId, double length)
+    public FixedLengthConstraint(Guid polygonId, Guid edgeId, double length)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
 

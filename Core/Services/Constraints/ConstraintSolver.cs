@@ -3,7 +3,7 @@ using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model;
 using PolygonStudio.Core.Model.Geometries;
 
-namespace PolygonStudio.Core.Services;
+namespace PolygonStudio.Core.Services.Constraints;
 
 public sealed class ConstraintSolver(Scene scene)
 {
@@ -170,7 +170,7 @@ public sealed class ConstraintSolver(Scene scene)
     {
         var result = new List<ResolvedFixedConstraint>();
 
-        foreach (var constraint in scene.Constraints.OfType<FixedEdgeLengthConstraint>())
+        foreach (var constraint in scene.Constraints.OfType<FixedLengthConstraint>())
         {
             var polygon = scene.Polygons.FirstOrDefault(p => p.Id == constraint.PolygonId);
             var edge = polygon?.Edges.FirstOrDefault(e => e.Id == constraint.EdgeId);
@@ -198,7 +198,7 @@ public sealed class ConstraintSolver(Scene scene)
     {
         var result = new List<ResolvedPerpendicularConstraint>();
 
-        foreach (var constraint in scene.Constraints.OfType<PerpendicularEdgesConstraint>())
+        foreach (var constraint in scene.Constraints.OfType<PerpendicularConstraint>())
         {
             var polygon1 = scene.Polygons.FirstOrDefault(p => p.Id == constraint.PolygonId1);
             var polygon2 = scene.Polygons.FirstOrDefault(p => p.Id == constraint.PolygonId2);

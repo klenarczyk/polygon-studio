@@ -6,7 +6,10 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
-using PolygonStudio.App.Controls.Canvas;
+using PolygonStudio.App.ContextMenus;
+using PolygonStudio.App.Interaction;
+using PolygonStudio.App.Rendering;
+using PolygonStudio.App.Viewport;
 using PolygonStudio.Core.Constraints;
 using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model;
@@ -18,26 +21,12 @@ namespace PolygonStudio.App.Controls;
 
 public sealed class PolygonCanvas : Control
 {
-    private const double VertexRadius = 5.0;
-    private const double HitRadius = 10.0;
-    private const double Padding = 30.0;
-
-    private Guid? _selectedPolygonId;
-    private Guid? _selectedVertexId;
-    private readonly List<SelectedEdge> _selectedEdgeIds = [];
-    
-    private DragTarget _dragTarget = DragTarget.None;
-    private Guid? _draggedPolygonId;
-    private Guid? _draggedVertexId;
-    private Guid? _draggedEdgeId;
-    private int _draggedControlPointIdx = -1;
-    private Point2D _previousPointerPosition;
-    
-    private ViewTransform? _viewTransform;
-    
     public Scene? Scene { get; set; }
     public EditorService? Editor { get; set; }
 
+    private readonly CanvasViewport _viewport = new();
+    private readonly CanvasInteractionController _interaction = new();
+    
     public override void Render(DrawingContext context)
     {
         base.Render(context);
@@ -45,435 +34,106 @@ public sealed class PolygonCanvas : Control
         context.FillRectangle(Brushes.White, new Rect(Bounds.Size));
         if (Scene is null || Bounds.Width <= 0 || Bounds.Height <= 0) return;
         
-        EnsureViewTransform();
-        if (_viewTransform is not { } transform) return;
+        if (_viewport.Transform is null) 
+            _viewport.FitToScene(Scene, Bounds.Size);
+
+        if (_viewport.Transform is not { } transform)
+            return;
         
-        var edgePen = new Pen(Brushes.Black, 2);
-        var selectedEdgePen = new Pen(Brushes.LightCoral, 2);
-        var vertexPen = new Pen(Brushes.Black, 2);
-        var controlPen = new Pen(Brushes.SlateGray, 1, DashStyle.Dash);
-        
-        var perpendicularConstraints = Scene.Constraints
-            .OfType<PerpendicularEdgesConstraint>()
-            .ToList();
-        
-        // Edges
-        foreach (var polygon in Scene.Polygons)
-        {
-            foreach (var edge in polygon.Edges)
-            {
-                var from = polygon.Vertices.FirstOrDefault(v => v.Id == edge.FromVertexId);
-                var to = polygon.Vertices.FirstOrDefault(v => v.Id == edge.ToVertexId);
-                
-                if (from is null || to is null) continue;
-
-                var start = transform.ToScreen(from.Position);
-                var end = transform.ToScreen(to.Position);
-
-                bool isSelected = _selectedEdgeIds.Contains(new SelectedEdge(polygon.Id, edge.Id));
-
-                var currentEdgePen = isSelected ? selectedEdgePen : edgePen;
-                
-                switch (edge.Geometry)
-                {
-                    case LineGeometry:
-                        context.DrawLine(currentEdgePen, start, end);
-                        break;
-                    
-                    case CubicBezierGeometry bezier:
-                        EdgeGeometryRenderer.DrawBezier(
-                            context,
-                            currentEdgePen, controlPen,
-                            transform,
-                            from.Position, to.Position,
-                            bezier);
-                        break;
-                    
-                    case CircularArcGeometry arc:
-                        EdgeGeometryRenderer.DrawCircularArc(
-                            context,
-                            currentEdgePen,
-                            transform,
-                            from.Position, to.Position,
-                            arc);
-                        break;
-                }
-                
-                if (Scene.Constraints
-                    .OfType<FixedEdgeLengthConstraint>()
-                    .Any(c => c.PolygonId == polygon.Id && c.EdgeId == edge.Id))
-                {
-                    var constraint = Scene.Constraints
-                        .OfType<FixedEdgeLengthConstraint>()
-                        .First(c => c.PolygonId == polygon.Id && c.EdgeId == edge.Id);
-
-                    var midpoint = new Point((start.X + end.X) / 2, (start.Y + end.Y) / 2);
-                    
-                    context.DrawEllipse(
-                        Brushes.White,
-                        new Pen(Brushes.DarkOrange, 1.5),
-                        midpoint,
-                        10,
-                        10
-                    );
-
-                    var label = new FormattedText(
-                        "L",
-                        CultureInfo.CurrentCulture,
-                        FlowDirection.LeftToRight,
-                        Typeface.Default,
-                        11,
-                        Brushes.DarkOrange
-                    );
-
-                    context.DrawText(
-                        label,
-                        new Point(midpoint.X - label.Width / 2, midpoint.Y - label.Height / 2)
-                    );
-                    
-                    var lengthLabel = new FormattedText(
-                        constraint.Length.ToString("0.##", CultureInfo.CurrentCulture),
-                        CultureInfo.CurrentCulture,
-                        FlowDirection.LeftToRight,
-                        Typeface.Default,
-                        11,
-                        Brushes.DarkOrange
-                    );
-
-                    context.DrawText(
-                        lengthLabel,
-                        new Point(midpoint.X + 12, midpoint.Y - lengthLabel.Height / 2)
-                    );
-                }
-                
-                var perpendicularMatch = perpendicularConstraints
-                    .Select((constraint, index) => new
-                    {
-                        Constraint = constraint,
-                        Id = $"P{index + 1}"
-                    })
-                    .FirstOrDefault(item =>
-                        (item.Constraint.PolygonId1 == polygon.Id &&
-                         item.Constraint.EdgeId1 == edge.Id) ||
-                        (item.Constraint.PolygonId2 == polygon.Id &&
-                         item.Constraint.EdgeId2 == edge.Id));
-
-                if (perpendicularMatch is not null)
-                {
-                    var midpoint = new Point((start.X + end.X) / 2, (start.Y + end.Y) / 2 - 18);
-
-                    context.DrawEllipse(
-                        Brushes.White,
-                        new Pen(Brushes.RoyalBlue, 1.5),
-                        midpoint,
-                        10, 10
-                    );
-
-                    var symbol = new FormattedText(
-                        "⊥",
-                        CultureInfo.CurrentCulture,
-                        FlowDirection.LeftToRight,
-                        Typeface.Default,
-                        12,
-                        Brushes.RoyalBlue
-                    );
-
-                    context.DrawText(
-                        symbol,
-                        new Point(midpoint.X - symbol.Width / 2, midpoint.Y - symbol.Height / 2)
-                    );
-
-                    var idLabel = new FormattedText(
-                        perpendicularMatch.Id,
-                        CultureInfo.CurrentCulture,
-                        FlowDirection.LeftToRight,
-                        Typeface.Default,
-                        11,
-                        Brushes.RoyalBlue
-                    );
-
-                    context.DrawText(
-                        idLabel,
-                        new Point(midpoint.X + 12, midpoint.Y - idLabel.Height / 2)
-                    );
-                }
-            }
-        }
-        
-        // Control points
-        foreach (var polygon in Scene.Polygons)
-        {
-            foreach (var edge in polygon.Edges)
-            {
-                if (edge.Geometry is not CubicBezierGeometry bezier)
-                    continue;
-
-                bool isControlSelected = _dragTarget == DragTarget.BezierControlPoint &&
-                                         _draggedEdgeId == edge.Id;
-                
-                EdgeGeometryRenderer.DrawControlPoint(
-                    context,
-                    transform.ToScreen(bezier.ControlPoint1),
-                    isControlSelected && _draggedControlPointIdx == 0);
-                
-                EdgeGeometryRenderer.DrawControlPoint(
-                    context,
-                    transform.ToScreen(bezier.ControlPoint2),
-                    isControlSelected && _draggedControlPointIdx == 1);
-            }
-        }
-        
-        // Vertices
-        foreach (var polygon in Scene.Polygons)
-        {
-            foreach (var vertex in polygon.Vertices)
-            {
-                var point = transform.ToScreen(vertex.Position);
-                bool isSelected = _selectedVertexId == vertex.Id || _draggedVertexId == vertex.Id;
-                
-                var currentVertexBrush = isSelected 
-                    ? Brushes.LightCoral
-                    : Brushes.White;
-                
-                context.DrawEllipse(
-                    currentVertexBrush,
-                    vertexPen,
-                    point,
-                    VertexRadius,
-                    VertexRadius
-                );
-
-                if (vertex.Continuity == ContinuityType.G0) 
-                    continue;
-                
-                var label = new FormattedText(
-                    vertex.Continuity.ToString(),
-                    CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight,
-                    Typeface.Default,
-                    11,
-                    Brushes.DarkSlateGray
-                );
-
-                context.DrawText(
-                    label,
-                    new Point(point.X + VertexRadius + 4, point.Y - label.Height / 2)
-                );
-            }
-        }
+        PolygonCanvasRenderer.Draw(
+            context,
+            Scene,
+            transform,
+            _interaction.Selection,
+            _interaction.Drag
+        );
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
-        if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
+        base.OnPointerPressed(e);
+        
+        if (Scene is null || Bounds.Width <= 0 || Bounds.Height <= 0)
+            return;
+
+        var point = e.GetPosition(this);
+        var properties = e.GetCurrentPoint(this).Properties;
+        
+        if (properties.IsRightButtonPressed)
         {
             HandleRightClick(e);
             return;
         }
         
-        bool ctrlPressed = e.KeyModifiers.HasFlag(KeyModifiers.Control);
-        if (!ctrlPressed) ResetSelection();
-        
-        base.OnPointerPressed(e);
-
-        if (Scene is null || Editor is null || Bounds.Width <= 0 || Bounds.Height <= 0)
-            return;
-
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        if (!properties.IsLeftButtonPressed)
             return;
         
-        var pointerPos = e.GetPosition(this);
-        
-        EnsureViewTransform();
-        if (_viewTransform is not { } transform) return;
+        if (_viewport.Transform is null) 
+            _viewport.FitToScene(Scene, Bounds.Size);
 
-        _previousPointerPosition = transform.ToWorld(pointerPos);
-        
-        double bestDistSquared = HitRadius * HitRadius;
-        Guid? foundPolygonId = null;
-        Guid? foundVertexId = null;
-        
-        foreach (var polygon in Scene.Polygons)
-        {
-            foreach (var vertex in polygon.Vertices)
-            {
-                var screenPos = transform.ToScreen(vertex.Position);
-                double dx = screenPos.X - pointerPos.X;
-                double dy = screenPos.Y - pointerPos.Y;
-                double distSquared = dx * dx + dy * dy;
+        if (_viewport.Transform is not { } transform)
+            return;
 
-                if (!(distSquared < bestDistSquared)) continue;
-                
-                bestDistSquared = distSquared;
-                foundPolygonId = polygon.Id;
-                foundVertexId = vertex.Id;
-            }
-        }
-
-        if (foundPolygonId is not null && foundVertexId is not null)
-        {
-            _dragTarget = DragTarget.Vertex;
-            _draggedPolygonId = foundPolygonId;
-            _draggedVertexId = foundVertexId;
-            _draggedEdgeId = null;
-            _draggedControlPointIdx = -1;
+        var hitTester = new CanvasHitTester(Scene, transform);
         
+        bool handled = _interaction.HandlePointerPressed(
+            point, 
+            hitTester, 
+            e.KeyModifiers
+        );
+
+        if (_interaction.Drag.IsDragging)
             e.Pointer.Capture(this);
-            e.Handled = true;
         
-            InvalidateVisual();
-            return;
-        }
-        
-        foreach (var polygon in Scene.Polygons)
-        {
-            foreach (var edge in polygon.Edges)
-            {
-                if (edge.Geometry is not CubicBezierGeometry bezier)
-                    continue;
-
-                Point[] controlPoints =
-                [
-                    transform.ToScreen(bezier.ControlPoint1),
-                    transform.ToScreen(bezier.ControlPoint2)
-                ];
-
-                for (var i = 0; i < controlPoints.Length; i++)
-                {
-                    var point = controlPoints[i];
-
-                    double dx = point.X - pointerPos.X;
-                    double dy = point.Y - pointerPos.Y;
-
-                    if (dx * dx + dy * dy > HitRadius * HitRadius)
-                        continue;
-
-                    _dragTarget = DragTarget.BezierControlPoint;
-                    _draggedPolygonId = polygon.Id;
-                    _draggedEdgeId = edge.Id;
-                    _draggedControlPointIdx = i;
-                    _draggedVertexId = null;
-
-                    e.Pointer.Capture(this);
-                    e.Handled = true;
-                    
-                    InvalidateVisual();
-                    return;
-                }
-            }
-
-            var hitTester = new CanvasHitTester(Scene, transform);
-            var edgeHit = hitTester.FindEdgeAt(pointerPos);
-
-            if (edgeHit is { } hitRes)
-            {
-                if (ctrlPressed)
-                {
-                    _selectedPolygonId = hitRes.Polygon.Id;
-                    
-                    var selected = new SelectedEdge(hitRes.Polygon.Id, hitRes.Edge.Id);
-                    int existingIndex = _selectedEdgeIds.IndexOf(selected);
-
-                    if (existingIndex >= 0)
-                    {
-                        _selectedEdgeIds.RemoveAt(existingIndex);
-                    }
-                    else
-                    {
-                        if (_selectedEdgeIds.Count >= 2)
-                            _selectedEdgeIds.RemoveAt(0);
-                        
-                        _selectedEdgeIds.Add(selected);
-                    }
-
-                    InvalidateVisual();
-                    e.Handled = true;
-                    return;
-                }
-                
-                ResetSelection();
-                _selectedPolygonId = hitRes.Polygon.Id;
-                _selectedEdgeIds.Add(new SelectedEdge(hitRes.Polygon.Id, hitRes.Edge.Id));
-                
-                _dragTarget = DragTarget.Polygon;
-                _draggedPolygonId = hitRes.Polygon.Id;
-                _previousPointerPosition = transform.ToWorld(pointerPos);
-            
-                e.Pointer.Capture(this);
-                e.Handled = true;
-            }
-        }
+        InvalidateVisual();
+        e.Handled = handled || _interaction.Drag.IsDragging;
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
 
-        if (_dragTarget == DragTarget.None ||
-            _draggedPolygonId is not { } polygonId ||
-            _viewTransform is not { } transform ||
-            Editor is null)
-        {
+        if (_viewport.Transform is not { } transform || Editor is null)
             return;
-        }
-
-        var screenPos = e.GetPosition(this);
-        var worldPos = transform.ToWorld(screenPos);
         
-        bool changed = _dragTarget switch
-        {
-            DragTarget.Polygon => 
-                Editor.MovePolygon(
-                    polygonId,
-                    new Point2D(
-                        worldPos.X - _previousPointerPosition.X, 
-                        worldPos.Y - _previousPointerPosition.Y
-                    )),
-            
-            DragTarget.Vertex when _draggedVertexId is { } vertexId =>
-                Editor.MoveVertex(polygonId, vertexId, worldPos),
-
-            DragTarget.BezierControlPoint when _draggedEdgeId is { } edgeId =>
-                Editor.MoveBezierControlPoint(
-                    polygonId,
-                    edgeId,
-                    _draggedControlPointIdx,
-                    worldPos),
-
-            _ => false
-        };
-
-        if (changed)
-            InvalidateVisual();
-
-        _previousPointerPosition = worldPos;
+        _interaction.HandlePointerMoved(
+            e.GetPosition(this),
+            transform,
+            Editor,
+            InvalidateVisual
+        );
+        
         e.Handled = true;
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+        
+        if (e.InitialPressMouseButton != MouseButton.Left)
+            return;
 
-        if (_dragTarget == DragTarget.None) return;
-
-        e.Pointer.Capture(null);
-
-        _dragTarget = DragTarget.None;
-        _draggedPolygonId = null;
-        _draggedVertexId = null;
-        _draggedEdgeId = null;
-        _draggedControlPointIdx = -1;
-        _previousPointerPosition = default;
+        _interaction.HandlePointerReleased(InvalidateVisual);
+        
+        if (Equals(e.Pointer.Captured, this))
+            e.Pointer.Capture(null);
         
         InvalidateVisual();
         e.Handled = true;
     }
-    
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        _interaction.Drag.Reset();
+        InvalidateVisual();
+    }
+
     // ---
 
     private void HandleRightClick(PointerPressedEventArgs e)
     {
-        if (Scene is null || Editor is null || _viewTransform is not { } transform)
+        if (Scene is null || Editor is null || _viewport.Transform is not { } transform)
             return;
 
         var hitTester = new CanvasHitTester(Scene, transform);
@@ -482,137 +142,64 @@ public sealed class PolygonCanvas : Control
         var vertexHit = hitTester.FindVertexAt(pointerPos);
         if (vertexHit is { } vertexRes)
         {
-            ResetSelection();
-            
-            _selectedPolygonId = vertexRes.Polygon.Id;
-            _selectedVertexId = vertexRes.Vertex.Id;
-            
+            _interaction.SelectVertexForContextMenu(vertexRes.Polygon.Id, vertexRes.Vertex.Id);
+
             InvalidateVisual();
-            
+
             VertexContextMenu.Show(
                 this,
                 Editor,
                 vertexRes.Polygon.Id, vertexRes.Vertex.Id,
-                InvalidateVisual);
-            
+                InvalidateVisual
+            );
+
             e.Handled = true;
             return;
         }
-        
+
         var edgeHit = hitTester.FindEdgeAt(pointerPos);
         if (edgeHit is { } edgeRes)
         {
-            _selectedPolygonId = edgeRes.Polygon.Id;
-            
-            var selected = new SelectedEdge(edgeRes.Polygon.Id, edgeRes.Edge.Id);
-            int existingIndex = _selectedEdgeIds.IndexOf(selected);
+            _interaction.SelectEdgeForContextMenu(edgeRes.Polygon.Id, edgeRes.Edge.Id);
 
-            if (existingIndex < 0)
-            {
-                if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
-                {
-                    if (_selectedEdgeIds.Count >= 2)
-                        _selectedEdgeIds.RemoveAt(0);
-                } else
-                {
-                    _selectedEdgeIds.Clear();
-                }
-
-                _selectedEdgeIds.Add(selected);
-            }
-            
             InvalidateVisual();
-            
+
+            var selectedEdges = _interaction.Selection.Edges;
+            bool canAddPerpendicular = selectedEdges.Count == 2;
+
             EdgeContextMenu.Show(
                 this,
                 Editor,
-                edgeRes.Polygon.Id, edgeRes.Edge.Id,
+                edgeRes.Polygon.Id,
+                edgeRes.Edge.Id,
                 edgeRes.Edge.Geometry,
                 InvalidateVisual,
-                _selectedEdgeIds.Count == 2,
-                addPerpendicularConstraint:
-                () =>
-                {
-                    if (_selectedEdgeIds.Count != 2)
-                        return;
+                canAddPerpendicular,
+                TryAddPerpendicularConstraint
+            );
 
-                    var first = _selectedEdgeIds[0];
-                    var second = _selectedEdgeIds[1];
-
-                    if (Editor?.AddPerpendicularConstraint(
-                            first.PolygonId, first.EdgeId,
-                            second.PolygonId, second.EdgeId) == true)
-                    {
-                        _selectedEdgeIds.Clear();
-                    }
-                }
-            );   
-            
             e.Handled = true;
             return;
         }
-        
-        ResetSelection();
-    }
-    
-    // ---
-    
-    private void EnsureViewTransform()
-    {
-        if (_viewTransform is not null)
-            return;
 
-        if (Scene is null || Bounds.Width <= 0 || Bounds.Height <= 0)
-            return;
-
-        _viewTransform = CreateTransform();
-    }
-    
-    private ViewTransform CreateTransform()
-    {
-        if (Scene is null)
-            return new ViewTransform(1, 0, 0, 0, 0);
-
-        var vertices = Scene.Polygons
-            .SelectMany(p => p.Vertices)
-            .ToList();
-
-        if (vertices.Count == 0)
-            return new ViewTransform(1, 0, 0, 0, 0);
-
-        double minX = vertices.Min(v => v.Position.X);
-        double maxX = vertices.Max(v => v.Position.X);
-        double minY = vertices.Min(v => v.Position.Y);
-        double maxY = vertices.Max(v => v.Position.Y);
-
-        double worldWidth = Math.Max(maxX - minX, 1e-6);
-        double worldHeight = Math.Max(maxY - minY, 1e-6);
-
-        double availableWidth = Math.Max(Bounds.Width - 2 * Padding, 1);
-        double availableHeight = Math.Max(Bounds.Height - 2 * Padding, 1);
-
-        double scale = Math.Min(
-            availableWidth / worldWidth,
-            availableHeight / worldHeight);
-
-        double drawnWidth = worldWidth * scale;
-        double drawnHeight = worldHeight * scale;
-
-        double left = (Bounds.Width - drawnWidth) / 2;
-        double top = (Bounds.Height - drawnHeight) / 2;
-
-        return new ViewTransform(scale, left, top, minX, maxY);
+        _interaction.Reset();
+        InvalidateVisual();
+        e.Handled = true;
     }
     
     // ---
     
     public bool TryAddPerpendicularConstraint()
     {
-        if (Editor is null || _selectedEdgeIds.Count != 2)
+        var edgeSet = _interaction.Selection.Edges;
+        
+        if (Editor is null || edgeSet.Count != 2)
             return false;
 
-        var first = _selectedEdgeIds[0];
-        var second = _selectedEdgeIds[1];
+        var selected = edgeSet.ToArray();
+        
+        var first = selected[0];
+        var second = selected[1];
 
         bool added = Editor.AddPerpendicularConstraint(
             first.PolygonId, first.EdgeId,
@@ -621,41 +208,10 @@ public sealed class PolygonCanvas : Control
 
         if (added)
         {
-            _selectedEdgeIds.Clear();
+            _interaction.Reset();
             InvalidateVisual();
         }
 
         return added;
     }
-    
-    // ---
-    
-    private void ResetSelection()
-    {
-        if (_selectedPolygonId is null && 
-            _selectedVertexId is null && 
-            _selectedEdgeIds.Count == 0)
-        {
-            return;
-        }
-        
-        _selectedPolygonId = null;
-        _selectedVertexId = null;
-        _selectedEdgeIds.Clear();
-        
-        InvalidateVisual();
-    }
-    
-    private enum DragTarget
-    {
-        None,
-        Polygon,
-        Vertex,
-        BezierControlPoint
-    }
-    
-    private readonly record struct SelectedEdge(
-        Guid PolygonId,
-        Guid EdgeId
-    );
 }

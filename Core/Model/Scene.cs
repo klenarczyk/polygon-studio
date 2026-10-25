@@ -10,24 +10,24 @@ public class Scene
     private readonly List<Polygon> _polygons = [];
     public IReadOnlyList<Polygon> Polygons => _polygons;
     
-    private readonly List<Constraint> _constraints = [];
-    public IReadOnlyList<Constraint> Constraints => _constraints;
+    private readonly List<IConstraint> _constraints = [];
+    public IReadOnlyList<IConstraint> Constraints => _constraints;
 
     public Scene()
     {
         Initialize();
     }
     
-    public bool TryAddConstraint(Constraint constraint)
+    public bool TryAddConstraint(IConstraint constraint)
     {
         if (_constraints.Any(c => c.Id == constraint.Id))
             return false;
 
         bool isValid = constraint switch
         {
-            FixedEdgeLengthConstraint fixedLength => IsValidFixedLengthConstraint(fixedLength),
+            FixedLengthConstraint fixedLength => IsValidFixedLengthConstraint(fixedLength),
 
-            PerpendicularEdgesConstraint perpendicular => IsValidPerpendicularConstraint(perpendicular),
+            PerpendicularConstraint perpendicular => IsValidPerpendicularConstraint(perpendicular),
 
             _ => false
         };
@@ -49,10 +49,10 @@ public class Scene
     {
         _constraints.RemoveAll(c => c switch
         {
-            FixedEdgeLengthConstraint fixedLength =>
+            FixedLengthConstraint fixedLength =>
                 fixedLength.PolygonId == polygonId && fixedLength.EdgeId == edgeId,
 
-            PerpendicularEdgesConstraint perpendicular =>
+            PerpendicularConstraint perpendicular =>
                 (perpendicular.PolygonId1 == polygonId && perpendicular.EdgeId1 == edgeId) ||
                 (perpendicular.PolygonId2 == polygonId && perpendicular.EdgeId2 == edgeId),
 
@@ -101,7 +101,7 @@ public class Scene
         // _constraints.Add(constraint);
     }
     
-    private bool IsValidFixedLengthConstraint(FixedEdgeLengthConstraint constraint)
+    private bool IsValidFixedLengthConstraint(FixedLengthConstraint constraint)
     {
         var polygon = _polygons.FirstOrDefault(p => p.Id == constraint.PolygonId);
         var edge = polygon?.Edges.FirstOrDefault(e => e.Id == constraint.EdgeId);
@@ -110,14 +110,14 @@ public class Scene
             return false;
 
         return !_constraints
-            .OfType<FixedEdgeLengthConstraint>()
+            .OfType<FixedLengthConstraint>()
             .Any(existing =>
                 existing.PolygonId == constraint.PolygonId &&
                 existing.EdgeId == constraint.EdgeId
             );
     }
 
-    private bool IsValidPerpendicularConstraint(PerpendicularEdgesConstraint constraint)
+    private bool IsValidPerpendicularConstraint(PerpendicularConstraint constraint)
     {
         if (constraint.PolygonId1 == constraint.PolygonId2 &&
             constraint.EdgeId1 == constraint.EdgeId2)
@@ -140,24 +140,10 @@ public class Scene
         }
 
         return !_constraints
-            .OfType<PerpendicularEdgesConstraint>()
-            .Any(existing => SameEdgePair(existing, constraint));
-    }
-
-    private static bool SameEdgePair(PerpendicularEdgesConstraint first, PerpendicularEdgesConstraint second)
-    {
-        bool sameOrder =
-            first.PolygonId1 == second.PolygonId1 &&
-            first.EdgeId1 == second.EdgeId1 &&
-            first.PolygonId2 == second.PolygonId2 &&
-            first.EdgeId2 == second.EdgeId2;
-
-        bool reversedOrder =
-            first.PolygonId1 == second.PolygonId2 &&
-            first.EdgeId1 == second.EdgeId2 &&
-            first.PolygonId2 == second.PolygonId1 &&
-            first.EdgeId2 == second.EdgeId1;
-
-        return sameOrder || reversedOrder;
+            .OfType<PerpendicularConstraint>()
+            .Any(c => 
+                c.EdgeId1 == edge1.Id ||  c.EdgeId1 == edge2.Id || 
+                c.EdgeId2 == edge1.Id || c.EdgeId2 == edge2.Id
+            );
     }
 }

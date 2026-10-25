@@ -2,6 +2,7 @@
 using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model;
 using PolygonStudio.Core.Model.Geometries;
+using PolygonStudio.Core.Services.Constraints;
 
 namespace PolygonStudio.Core.Services;
 
@@ -151,7 +152,7 @@ public sealed class EditorService(Scene scene)
         
         if (polygon is null || edge is null) return false;
 
-        var constraint = new FixedEdgeLengthConstraint(polygonId, edgeId, length);
+        var constraint = new FixedLengthConstraint(polygonId, edgeId, length);
 
         return Scene.TryAddConstraint(constraint); // TODO: Make the solver move the vertices accordingly
     }
@@ -176,7 +177,7 @@ public sealed class EditorService(Scene scene)
         if (polygonId1 == polygonId2 && edgeId1 == edgeId2)
             return false;
 
-        return Scene.TryAddConstraint(new PerpendicularEdgesConstraint(
+        return Scene.TryAddConstraint(new PerpendicularConstraint(
                 polygonId1, edgeId1, polygonId2, edgeId2)
         );
     }

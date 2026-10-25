@@ -1,4 +1,4 @@
-﻿namespace PolygonStudio.Core.Services;
+﻿namespace PolygonStudio.Core.Services.Constraints;
 
 public enum MoveTargetKind
 {

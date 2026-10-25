@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using PolygonStudio.Core.Constraints;
 using PolygonStudio.Core.Services;
 
-namespace PolygonStudio.App.Controls.Canvas;
+namespace PolygonStudio.App.ContextMenus;
 
 public static class VertexContextMenu
 {
@@ -18,13 +18,29 @@ public static class VertexContextMenu
             Placement = PlacementMode.Pointer
         };
 
+        var continuityMenu = CreateContinuityMenu(editor, polygonId, vertexId, invalidateVisual);
+        var deleteItem = CreateDeleteItem(editor, polygonId, vertexId, invalidateVisual);
+        
         // ---
         
+        menu.Items.Add(continuityMenu);
+        menu.Items.Add(deleteItem);
+        
+        menu.Open(owner);
+    }
+
+    // ---
+    
+    private static MenuItem CreateContinuityMenu(
+        EditorService editor,
+        Guid polygonId, Guid vertexId,
+        Action invalidateVisual)
+    {
         var continuityMenu = new MenuItem()
         {
             Header = "Continuity"
         };
-
+        
         var currentType = editor.GetVertexContinuity(polygonId, vertexId);
         
         foreach (var type in Enum.GetValues<ContinuityType>())
@@ -44,11 +60,15 @@ public static class VertexContextMenu
 
             continuityMenu.Items.Add(item);
         }
-        
-        menu.Items.Add(continuityMenu);
-        
-        // ---
-        
+
+        return continuityMenu;
+    }
+
+    private static MenuItem CreateDeleteItem(
+        EditorService editor,
+        Guid polygonId, Guid vertexId,
+        Action invalidateVisual)
+    {
         var deleteItem = new MenuItem
         {
             Header = "Delete vertex"
@@ -60,7 +80,6 @@ public static class VertexContextMenu
                 invalidateVisual();
         };
 
-        menu.Items.Add(deleteItem);
-        menu.Open(owner);
+        return deleteItem;
     }
 }

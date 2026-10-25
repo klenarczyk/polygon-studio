@@ -1,4 +1,4 @@
-﻿namespace PolygonStudio.Core.Services;
+﻿namespace PolygonStudio.Core.Services.Constraints;
 
 /// <summary>
 /// Minimizes the sum of squared residuals using
