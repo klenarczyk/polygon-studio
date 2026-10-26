@@ -11,6 +11,10 @@ public sealed class CanvasInteractionController
     public CanvasSelection Selection { get; } = new();
     public DragState Drag { get; } = new();
     
+    public bool IsPanning { get; private set; }
+    
+    private Point _lastPanPosition;
+    
     public bool HandlePointerPressed(
         Point position,
         CanvasHitTester hitTester,
@@ -52,12 +56,13 @@ public sealed class CanvasInteractionController
         if (edge is { } e)
         {
             if (ctrlPressed)
+            {
                 Selection.ToggleEdge(e.Polygon.Id, e.Edge.Id);
-            else 
-                Selection.SelectEdge(e.Polygon.Id, e.Edge.Id);
-            
+                return true;
+            }
+
+            Selection.SelectEdge(e.Polygon.Id, e.Edge.Id);
             Drag.StartPolygonDrag(e.Polygon.Id, position);
-            
             return true;
         }
         
@@ -115,6 +120,18 @@ public sealed class CanvasInteractionController
         invalidate();
     }
     
+    public void HandlePointerWheelChanged(
+        Point position,
+        double wheelDelta,
+        CanvasViewport viewport)
+    {
+        if (wheelDelta == 0)
+            return;
+
+        double factor = Math.Pow(1.1, wheelDelta);
+        viewport.ZoomAt(position, factor);
+    }
+    
     public void Reset()
     {
         Selection.Clear();
@@ -137,5 +154,38 @@ public sealed class CanvasInteractionController
             return;
         
         Selection.SelectEdge(polygonId, edgeId);
+    }
+    
+    // ---
+    
+    public bool TryBeginPan(Point position, KeyModifiers modifiers)
+    {
+        if (!modifiers.HasFlag(KeyModifiers.Shift))
+            return false;
+
+        Drag.Reset();
+        IsPanning = true;
+        _lastPanPosition = position;
+        return true;
+    }
+
+    public bool HandlePanPointerMoved(Point position, CanvasViewport viewport, Action invalidate)
+    {
+        if (!IsPanning) return false;
+
+        var delta = position - _lastPanPosition;
+        viewport.PanBy(new Point(delta.X, delta.Y));
+        _lastPanPosition = position;
+
+        invalidate();
+        return true;
+    }
+
+    public bool EndPan()
+    {
+        if (!IsPanning) return false;
+
+        IsPanning = false;
+        return true;
     }
 }

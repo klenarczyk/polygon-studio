@@ -47,7 +47,7 @@ public sealed class PolygonCanvas : Control
         if (Scene is null || Bounds.Width <= 0 || Bounds.Height <= 0) return;
         
         if (_viewport.Transform is null) 
-            _viewport.FitToScene(Scene, Bounds.Size);
+            _viewport.Initialize(Bounds.Size);
 
         if (_viewport.Transform is not { } transform)
             return;
@@ -71,6 +71,13 @@ public sealed class PolygonCanvas : Control
 
         var point = e.GetPosition(this);
         var properties = e.GetCurrentPoint(this).Properties;
+
+        if (_interaction.TryBeginPan(point, e.KeyModifiers))
+        {
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            return;
+        }
         
         if (properties.IsRightButtonPressed)
         {
@@ -82,7 +89,7 @@ public sealed class PolygonCanvas : Control
             return;
         
         if (_viewport.Transform is null) 
-            _viewport.FitToScene(Scene, Bounds.Size);
+            _viewport.Initialize(Bounds.Size);
 
         if (_viewport.Transform is not { } transform)
             return;
@@ -106,6 +113,12 @@ public sealed class PolygonCanvas : Control
     {
         base.OnPointerMoved(e);
 
+        if (_interaction.HandlePanPointerMoved(e.GetPosition(this), _viewport, InvalidateVisual))
+        {
+            e.Handled = true;
+            return;
+        }
+        
         if (_viewport.Transform is not { } transform || Editor is null)
             return;
         
@@ -123,6 +136,16 @@ public sealed class PolygonCanvas : Control
     {
         base.OnPointerReleased(e);
         
+        if (_interaction.EndPan())
+        {
+            if (Equals(e.Pointer.Captured, this))
+                e.Pointer.Capture(null);
+
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+        
         if (e.InitialPressMouseButton != MouseButton.Left)
             return;
 
@@ -138,10 +161,36 @@ public sealed class PolygonCanvas : Control
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
+        
+        _interaction.EndPan();
         _interaction.Drag.Reset();
+        
         InvalidateVisual();
     }
 
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+
+        if (Scene is null || Bounds.Width <= 0 || Bounds.Height <= 0)
+            return;
+
+        if (_viewport.Transform is null)
+            _viewport.Initialize(Bounds.Size);
+
+        if (_viewport.Transform is null)
+            return;
+
+        _interaction.HandlePointerWheelChanged(
+            e.GetPosition(this),
+            e.Delta.Y,
+            _viewport
+        );
+
+        InvalidateVisual();
+        e.Handled = true;
+    }
+    
     // ---
 
     private void HandleRightClick(PointerPressedEventArgs e)
