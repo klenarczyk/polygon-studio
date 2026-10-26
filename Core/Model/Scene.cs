@@ -82,20 +82,37 @@ public class Scene
     {
         var polygon1 = new Polygon(
         [
-            new Point2D(-100.0, 0.0),
-            new Point2D(-55.0, 50.0),
-            new Point2D(-10.0, 0.0)
+            new Point2D(-500.0, -150.0),
+            new Point2D(-500.0, 150.0),
+            new Point2D(-50.0, -150.0)
         ]);
         
         var polygon2 = new Polygon(
         [
-            new Point2D(10.0, 50.0),
-            new Point2D(55.0, 0.0),
-            new Point2D(100.0, 50.0)
+            new Point2D(50.0, 150.0),
+            new Point2D(275.0, -150.0),
+            new Point2D(500.0, 150.0)
         ]);
+
+        polygon2.Edges[0].Geometry = EdgeGeometryFactory.CreateDefault(
+            polygon2.Vertices[0].Position, polygon2.Vertices[1].Position,
+            typeof(CubicBezierGeometry)
+        );
+        
+        var fc = new FixedLengthConstraint(
+            polygon2.Id, polygon2.Edges[2].Id, 450.0
+        );
+        
+        var pc = new PerpendicularConstraint(
+            polygon1.Id, polygon1.Edges[0].Id,
+            polygon1.Id, polygon1.Edges[2].Id
+        );
         
         _polygons.Add(polygon1);
         _polygons.Add(polygon2);
+        
+        _constraints.Add(fc);
+        _constraints.Add(pc);
     }
     
     private bool IsValidFixedLengthConstraint(FixedLengthConstraint constraint)

@@ -67,21 +67,18 @@ internal sealed class ConstraintSolver(Scene scene)
             var from = new VertexKey(polygon.Id, edge.FromVertexId);
             var to = new VertexKey(polygon.Id, edge.ToVertexId);
 
-            lockedVertices.Add(from);
-            lockedVertices.Add(to);
-
             var adjacentVertex = cpIdx == 0 ? from : to;
             bfsSeed = adjacentVertex;
+            lockedVertices.Add(adjacentVertex);
         }
         else return false;
         
         if (!Relax(state, bfsSeed, lockedVertices, lockedControlPoints))
         {
-            // Try locking only the closer endpoint
-            if (target.Kind == MoveTargetKind.BezierControlPoint && lockedVertices.Count > 1)
+            // Try without locking the adjacent endpoint
+            if (target.Kind == MoveTargetKind.BezierControlPoint && lockedVertices.Count > 0)
             {
                 lockedVertices.Clear();
-                lockedVertices.Add(bfsSeed.Value);
             
                 if (!Relax(state, bfsSeed, lockedVertices, lockedControlPoints))
                     return false;

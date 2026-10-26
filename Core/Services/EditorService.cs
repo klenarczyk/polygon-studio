@@ -227,6 +227,8 @@ public sealed class EditorService(Scene scene)
     }
     
     // ---
+
+    public bool SolveScene() => _solver.TrySolveCurrentScene();
     
     private bool ExecuteTransaction(Func<bool> operation)
     {
