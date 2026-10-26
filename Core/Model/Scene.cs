@@ -1,5 +1,4 @@
-﻿using System.Drawing;
-using PolygonStudio.Core.Constraints;
+﻿using PolygonStudio.Core.Constraints;
 using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model.Geometries;
 

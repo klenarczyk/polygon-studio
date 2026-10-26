@@ -1,22 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
+﻿using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
 using PolygonStudio.App.ContextMenus;
 using PolygonStudio.App.Interaction;
 using PolygonStudio.App.Rendering;
 using PolygonStudio.App.Viewport;
-using PolygonStudio.Core.Constraints;
-using PolygonStudio.Core.Geometry;
 using PolygonStudio.Core.Model;
-using PolygonStudio.Core.Model.Geometries;
 using PolygonStudio.Core.Services;
-using LineGeometry = PolygonStudio.Core.Model.Geometries.LineGeometry;
 
 namespace PolygonStudio.App.Controls;
 
@@ -250,8 +242,8 @@ public sealed class PolygonCanvas : Control
     }
     
     // ---
-    
-    public bool TryAddPerpendicularConstraint()
+
+    private bool TryAddPerpendicularConstraint()
     {
         var edgeSet = _interaction.Selection.Edges;
         

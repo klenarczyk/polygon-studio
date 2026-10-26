@@ -14,8 +14,18 @@
         <viewModels:MainViewModel />
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto, *">
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" ZIndex="50">
+    <Grid RowDefinitions="Auto, Auto, *">
+        <Menu Grid.Row="0" ZIndex="100">
+            <MenuItem Header="_File">
+                <MenuItem Header="_Reset scene" Click="OnResetSceneClick" />
+            </MenuItem>
+
+            <MenuItem Header="_Help">
+                <MenuItem Header="_Documentation" Click="OnDocumentationClick" />
+            </MenuItem>
+        </Menu>
+        
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" ZIndex="50">
             <TextBlock Text="Line drawing algorithm:" VerticalAlignment="Center" Padding="8, 0" />
 
             <RadioButton
@@ -30,6 +40,6 @@
                 Click="OnBresenhamLineDrawingClick" />
         </StackPanel>
         
-        <controls:PolygonCanvas x:Name="Canvas" Grid.Row="1" />
+        <controls:PolygonCanvas x:Name="Canvas" Grid.Row="2" />
     </Grid>
 </Window>

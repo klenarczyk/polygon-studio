@@ -174,10 +174,18 @@ public static class EdgeContextMenu
             IsEnabled = canAddPerpendicularConstraint
         };
 
-        perpendicularItem.Click += (_, _) =>
+        perpendicularItem.Click += async (_, _) =>
         {
-            addPerpendicularConstraint();
-            invalidateVisual();
+            if (TopLevel.GetTopLevel(owner) is not Window ownerWindow)
+                return;
+            
+            if (addPerpendicularConstraint())
+            {
+                invalidateVisual();
+            }else
+            {
+                await ShowConstraintErrorAsync(ownerWindow);
+            }
         };
         
         constraintMenu.Items.Add(fixedLengthItem);
@@ -276,7 +284,7 @@ public static class EdgeContextMenu
                 {
                     new TextBlock
                     {
-                        Text = "The fixed-length constraint could not be applied.",
+                        Text = "The constraint could not be applied.",
                         TextWrapping = TextWrapping.Wrap
                     },
                     new Button

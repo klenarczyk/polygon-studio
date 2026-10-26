@@ -2,23 +2,19 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using PolygonStudio.App.Rendering;
 using PolygonStudio.App.ViewModels;
-using PolygonStudio.Core.Model;
-using PolygonStudio.Core.Services;
 
 namespace PolygonStudio.App.Views;
 
 public partial class MainWindow : Window
 {
-    private readonly MainViewModel _viewModel;
-    
     public MainWindow()
     {
         InitializeComponent();
 
-        _viewModel = new MainViewModel();
+        var viewModel = new MainViewModel();
         
-        Canvas.Scene = _viewModel.Scene;
-        Canvas.Editor = _viewModel.Editor;
+        Canvas.Scene = viewModel.Scene;
+        Canvas.Editor = viewModel.Editor;
     }
     
     private void OnAvaloniaLineDrawingClick(object? sender, RoutedEventArgs e)
@@ -29,5 +25,17 @@ public partial class MainWindow : Window
     private void OnBresenhamLineDrawingClick(object? sender, RoutedEventArgs e)
     {
         Canvas.LineDrawingAlgorithm = LineDrawingAlgorithm.Bresenham;
+    }
+
+    private void OnResetSceneClick(object? sender, RoutedEventArgs e)
+    {
+        Canvas.Scene?.Reset();
+        Canvas.InvalidateVisual();
+    }
+
+    private async void OnDocumentationClick(object? sender, RoutedEventArgs e)
+    {
+        var documentation = new DocumentationWindow();
+        await documentation.ShowDialog(this);
     }
 }

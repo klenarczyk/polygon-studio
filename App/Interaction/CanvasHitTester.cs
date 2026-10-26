@@ -20,7 +20,7 @@ public sealed class CanvasHitTester(Scene scene, ViewTransform transform)
         (Polygon Polygon, Vertex Vertex)? bestHit = null;
         double bestDistanceSquared = VertexHitTolerance * VertexHitTolerance;
 
-        foreach (var polygon in scene.Polygons)
+        foreach (var polygon in scene.Polygons.Reverse())
         foreach (var vertex in polygon.Vertices)
         {
             var screenVertex = transform.WorldToCanvas(vertex.Position);
@@ -44,7 +44,7 @@ public sealed class CanvasHitTester(Scene scene, ViewTransform transform)
         (Polygon Polygon, Edge Edge, int Index)? bestHit = null;
         double bestDistanceSquared = ControlPointHitTolerance * ControlPointHitTolerance;
         
-        foreach (var polygon in scene.Polygons)
+        foreach (var polygon in scene.Polygons.Reverse())
         foreach (var edge in polygon.Edges)
         {
             if (edge.Geometry is not CubicBezierGeometry bezier)
@@ -80,7 +80,7 @@ public sealed class CanvasHitTester(Scene scene, ViewTransform transform)
         (Polygon Polygon, Edge Edge)? bestHit = null;
         double bestDistanceSquared = EdgeHitTolerance * EdgeHitTolerance;
         
-        foreach (var polygon in scene.Polygons)
+        foreach (var polygon in scene.Polygons.Reverse())
         foreach (var edge in polygon.Edges)
         {
             var from = polygon.Vertices.FirstOrDefault(v => v.Id == edge.FromVertexId);

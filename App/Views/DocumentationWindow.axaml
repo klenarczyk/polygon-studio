@@ -1,0 +1,184 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="PolygonStudio.App.Views.DocumentationWindow"
+        Title="Polygon Studio | Documentation"
+        Width="760"
+        Height="680"
+        MinWidth="520"
+        MinHeight="420"
+        WindowStartupLocation="CenterOwner">
+    
+    <ScrollViewer Padding="24">
+        <StackPanel Spacing="12">
+            <TextBlock Text="Polygon Studio"
+                       FontSize="26"
+                       FontWeight="Bold" />
+
+            <TextBlock Text="Documentation"
+                       FontSize="16"
+                       Opacity="0.75" />
+
+            <Separator />
+
+            <TextBlock Text="1. User Guide"
+                       FontSize="20"
+                       FontWeight="Bold" />
+
+            <StackPanel Spacing="8">
+                <TextBlock TextWrapping="Wrap">
+                    - Move vertices and Bézier control points by clicking 
+                    and dragging them with the Left Mouse Button.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - Move a polygon by dragging one of its edges with the 
+                    Left Mouse Button.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - Use Ctrl + left-click to toggle an edge's selection state. 
+                    You can select up to two edges at a time.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - Right-click a vertex or edge to open its context menu.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - Hold Shift and drag with the Left Mouse Button to pan the view.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - Zoom in and out using the scroll wheel.
+                </TextBlock>
+            </StackPanel>
+
+            <TextBlock Text="2. Assumptions"
+                       FontSize="20"
+                       FontWeight="Bold" />
+
+            <StackPanel Spacing="8">
+                <TextBlock TextWrapping="Wrap">
+                    - Continuity is a property of each vertex, set to G0 by default.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - The view transformation is independent of the scene's geometry 
+                    and world coordinates.
+                </TextBlock>
+            </StackPanel>
+
+            <TextBlock Text="3. Data model"
+                       FontSize="20"
+                       FontWeight="Bold" />
+
+            <StackPanel Spacing="8">
+                <TextBlock TextWrapping="Wrap">
+                    - Scene - owns polygons and constraints.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - Polygon - stores vertices and edges.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - Vertex - stores its position and continuity.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - Edge - stores its two endpoints and geometry.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - LineGeometry - represents a straight line.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - CubicBezierGeometry - represents a cubic Bézier curve.
+                    Stores its two control points.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - CircularArcGeometry - represents a circular arc.
+                    Stores its bulge value.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - IConstraint - defines a geometric constraint.
+                </TextBlock>
+            </StackPanel>
+
+            <TextBlock Text="4. Algorithm Descriptions"
+                       FontSize="20"
+                       FontWeight="Bold" />
+
+            <TextBlock Text="Drawing"
+                       FontSize="16"
+                       FontWeight="SemiBold" />
+
+            <StackPanel Spacing="8">
+                <TextBlock TextWrapping="Wrap">
+                    - Line segments can be drawn using either Avalonia or
+                    a custom Bresenham algorithm implementation (pixels are
+                    represented by 1x1 squares).
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - Cubic Bézier curves are converted to power-basis form and 
+                    sampled incrementally using the finite-difference method.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    - Circular arcs are sampled based on the circle's
+                    parameters and the arc angle.
+                </TextBlock>
+            </StackPanel>
+                
+            <TextBlock Text="Constraint solving"
+                       FontSize="16"
+                       FontWeight="SemiBold" />
+
+            <StackPanel Spacing="8">
+                <TextBlock TextWrapping="Wrap">
+                    The constraint solver creates a snapshot of the current scene 
+                    and iteratively adjusts vertex positions and Bezier control 
+                    points to reduce constraint and continuity violations.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    Vertices and control points are ranked to guide the adjustment 
+                    process. Specified target points are locked in place so that 
+                    the solver does not move them.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    If the solver finds a valid solution, it commits the updated state 
+                    to the scene. Otherwise, it discards the proposed changes, and the 
+                    EditorService rolls back the corresponding edit.
+                </TextBlock>
+            </StackPanel>
+
+            <TextBlock Text="Canvas hit testing"
+                       FontSize="16"
+                       FontWeight="SemiBold" />
+
+            <StackPanel Spacing="8">
+                <TextBlock TextWrapping="Wrap">
+                    Hit testing uses the current ViewTransform to account for the 
+                    canvas's zoom and pan. Candidate geometry is checked against 
+                    the pointer position to determine which object was clicked.
+                </TextBlock>
+                
+                <TextBlock TextWrapping="Wrap">
+                    Curved edges are tested using the same sampling algorithm 
+                    used for rendering, keeping hit testing consistent with 
+                    the displayed geometry.
+                </TextBlock>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+        
+</Window>
