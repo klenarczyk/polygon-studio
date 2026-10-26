@@ -378,7 +378,12 @@ internal static class SolverAdjustments
             {
                 var adjustedCp = vertex + (isOutgoing ? dir : -dir) * (lineLen / 3.0);
                 state.Beziers[bezierKey] = isOutgoing ? (adjustedCp, bezier.Cp2) : (bezier.Cp1, adjustedCp);
-                return MathHelper.DistanceSquared(cp, adjustedCp);
+                double distCp = MathHelper.DistanceSquared(cp, adjustedCp);
+
+                var newOther = vertex + (isOutgoing ? -dir : dir) * lineLen;
+                double distLine = MoveVertexWithControls(lineKey, newOther, state);
+
+                return distCp + distLine;
             }
 
             double targetLineLen = type == ContinuityType.C1 ? 3.0 * cpLen : lineLen;
