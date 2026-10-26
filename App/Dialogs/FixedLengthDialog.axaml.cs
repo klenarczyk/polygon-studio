@@ -6,6 +6,12 @@ namespace PolygonStudio.App.Dialogs;
 public partial class FixedLengthDialog : Window
 {
     public double? AcceptedLength { get; private set; }
+
+    public FixedLengthDialog()
+    {
+        InitializeComponent();
+        LengthInput.Text = "100.00";
+    }
     
     public FixedLengthDialog(double currentLength)
     {

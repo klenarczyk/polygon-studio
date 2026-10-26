@@ -18,12 +18,13 @@ public static class PolygonCanvasRenderer
     private const double VertexRadius = 5.0;
     private const double ConstraintMarkerRadius = 10.0;
     private const double AnnotationFontSize = 11.0;
+    private const double ConstraintMarkerSpacing = 30.0;
     
     private static readonly Pen EdgePen = new(Brushes.Black, 2);
-    private static readonly Pen SelectedEdgePen = new(Brushes.LightCoral, 2);
+    private static readonly Pen SelectedEdgePen = new(Brushes.LightSeaGreen, 2);
     private static readonly Pen VertexPen = new(Brushes.Black, 2);
     private static readonly Pen ControlPen = new(Brushes.SlateGray, 1, DashStyle.Dash);
-    private static readonly Pen FixedLengthPen = new(Brushes.DarkOrange, 1.5);
+    private static readonly Pen FixedLengthPen = new(Brushes.LightCoral, 1.5);
     private static readonly Pen PerpendicularPen = new Pen(Brushes.RoyalBlue, 1.5);
     
     public static void Draw(
@@ -60,7 +61,7 @@ public static class PolygonCanvasRenderer
                 (dragState.Target == DragTarget.Vertex && dragState.VertexId == vertex.Id);
 
             var brush = isSelected
-                ? Brushes.LightCoral
+                ? Brushes.LightSeaGreen
                 : Brushes.White;
 
             context.DrawEllipse(
@@ -77,10 +78,9 @@ public static class PolygonCanvasRenderer
             DrawText(
                 context,
                 vertex.Continuity.ToString(),
-                new Point(point.X + VertexRadius + 4, point.Y),
+                new Point(point.X + VertexRadius + 8, point.Y),
                 Brushes.SlateGray,
-                AnnotationFontSize,
-                false, true
+                AnnotationFontSize
             );
         }
     }
@@ -180,31 +180,53 @@ public static class PolygonCanvasRenderer
 
                 var edgeKey = (polygon.Id, edge.Id);
 
-                if (annotations.FixedLengths.TryGetValue(edgeKey, out string? fixedLength))
-                    DrawFixedLengthAnnotation(context, start, end, fixedLength);
-
-                if (annotations.Perpendiculars.TryGetValue(edgeKey, out string? perpendicularLabel))
-                    DrawPerpendicularAnnotation(context, start, end, perpendicularLabel);
+                if (annotations.ByEdge.TryGetValue(edgeKey, out var edgeAnnotations))
+                    DrawEdgeAnnotations(context, start, end, edgeAnnotations);
             }
         }
     }
 
     // ---
 
-    private static void DrawFixedLengthAnnotation(
+    private static void DrawEdgeAnnotations(
         DrawingContext context,
         Point start, Point end,
-        string label)
+        List<EdgeAnnotation> annotations)
     {
+        if (annotations.Count == 0) return;
+
         var midpoint = new Point(
             (start.X + end.X) / 2,
             (start.Y + end.Y) / 2
         );
 
+        double totalWidth = (annotations.Count - 1) * ConstraintMarkerSpacing;
+        double startX = midpoint.X - totalWidth / 2;
+
+        for (int i = 0; i < annotations.Count; i++)
+        {
+            var markerPos = new Point(startX + i * ConstraintMarkerSpacing, midpoint.Y);
+            var annotation = annotations[i];
+
+            switch (annotation.Type)
+            {
+                case ConstraintType.FixedLength:
+                    DrawFixedLengthMarker(context, markerPos, annotation.Label);
+                    break;
+                
+                case ConstraintType.Perpendicular:
+                    DrawPerpendicularMarker(context, markerPos, annotation.Label);
+                    break;
+            }
+        }
+    }
+    
+    private static void DrawFixedLengthMarker(DrawingContext context, Point position, string label)
+    {
         context.DrawEllipse(
             Brushes.White,
             FixedLengthPen,
-            midpoint,
+            position,
             ConstraintMarkerRadius,
             ConstraintMarkerRadius
         );
@@ -212,54 +234,44 @@ public static class PolygonCanvasRenderer
         DrawText(
             context,
             "L",
-            midpoint,
-            Brushes.DarkOrange,
-            AnnotationFontSize,
-            true, true
+            position,
+            Brushes.LightCoral,
+            AnnotationFontSize
         );
 
         DrawText(
             context,
             label,
-            new Point(midpoint.X + 12, midpoint.Y),
-            Brushes.DarkOrange,
-            AnnotationFontSize,
-            false, true
+            new Point(position.X, position.Y + ConstraintMarkerRadius + 8),
+            Brushes.LightCoral,
+            AnnotationFontSize
         );
     }
 
-    private static void DrawPerpendicularAnnotation(
-        DrawingContext context,
-        Point start, Point end,
-        string label)
+    private static void DrawPerpendicularMarker(DrawingContext context, Point position, string label)
     {
-        var midpoint = new Point(
-            (start.X + end.X) / 2,
-            (start.Y + end.Y) / 2 - 18);
-
         context.DrawEllipse(
             Brushes.White,
             PerpendicularPen,
-            midpoint,
+            position,
             ConstraintMarkerRadius,
-            ConstraintMarkerRadius);
+            ConstraintMarkerRadius
+        );
 
         DrawText(
             context,
             "⊥",
-            midpoint,
+            position,
             Brushes.RoyalBlue,
-            12,
-            true, true
+            12
         );
 
         DrawText(
             context,
             label,
-            new Point(midpoint.X + 12, midpoint.Y),
+            new Point(position.X, position.Y + ConstraintMarkerRadius + 8),
             Brushes.RoyalBlue,
-            AnnotationFontSize,
-            false, true
+            AnnotationFontSize
         );
     }
     
@@ -268,9 +280,7 @@ public static class PolygonCanvasRenderer
         string text,
         Point position,
         IBrush brush,
-        double fontSize,
-        bool centerHorizontally,
-        bool centerVertically)
+        double fontSize)
     {
         var formatted = new FormattedText(
             text,
@@ -281,25 +291,23 @@ public static class PolygonCanvasRenderer
             brush
         );
 
-        double x = centerHorizontally
-            ? position.X - formatted.Width / 2
-            : position.X;
-
-        double y = centerVertically
-            ? position.Y - formatted.Height / 2
-            : position.Y;
+        double x = position.X - formatted.Width / 2;
+        double y = position.Y - formatted.Height / 2;
 
         context.DrawText(formatted, new Point(x, y));
     }
 
     private static ConstraintAnnotations BuildConstraintAnnotations(Scene scene)
     {
-        var fixedLengths = new Dictionary<(Guid, Guid), string>();
-        var perpendiculars = new Dictionary<(Guid, Guid), string>();
-        
+        var byEdge = new Dictionary<(Guid PolygonId, Guid EdgeId), List<EdgeAnnotation>>();
+
         foreach (var constraint in scene.Constraints.OfType<FixedLengthConstraint>())
         {
-            fixedLengths.TryAdd((constraint.PolygonId, constraint.EdgeId), constraint.Length.ToString("0.##"));
+            AddAnnotation(
+                constraint.PolygonId, 
+                constraint.EdgeId, 
+                new EdgeAnnotation(ConstraintType.FixedLength, constraint.Length.ToString("0.##"))
+            );
         }
 
         var index = 1;
@@ -307,15 +315,42 @@ public static class PolygonCanvasRenderer
         {
             var label = $"P{index++}";
 
-            perpendiculars.TryAdd((constraint.PolygonId1, constraint.EdgeId1), label);
-            perpendiculars.TryAdd((constraint.PolygonId2, constraint.EdgeId2), label);
+            AddAnnotation(
+                constraint.PolygonId1, 
+                constraint.EdgeId1, 
+                new EdgeAnnotation(ConstraintType.Perpendicular, label)
+            );
+            
+            AddAnnotation(
+                constraint.PolygonId2, 
+                constraint.EdgeId2, 
+                new EdgeAnnotation(ConstraintType.Perpendicular, label)
+            );
         }
 
-        return new ConstraintAnnotations(fixedLengths, perpendiculars);
+        return new ConstraintAnnotations(byEdge);
+
+        void AddAnnotation(Guid polygonId, Guid edgeId, EdgeAnnotation annotation)
+        {
+            var key = (polygonId, edgeId);
+            if (!byEdge.TryGetValue(key, out var list))
+            {
+                list = [];
+                byEdge[key] = list;
+            }
+            
+            list.Add(annotation);
+        }
     }
 
+    private enum ConstraintType
+    {
+        FixedLength, Perpendicular
+    }
+
+    private sealed record EdgeAnnotation(ConstraintType Type, string Label);
+
     private sealed record ConstraintAnnotations(
-        Dictionary<(Guid PolygonId, Guid EdgeId), string> FixedLengths,
-        Dictionary<(Guid PolygonId, Guid EdgeId), string> Perpendiculars
+        Dictionary<(Guid PolygonId, Guid EdgeId), List<EdgeAnnotation>> ByEdge
     );
 }

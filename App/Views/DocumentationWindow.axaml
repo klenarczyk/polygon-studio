@@ -144,7 +144,7 @@
             <StackPanel Spacing="8">
                 <TextBlock TextWrapping="Wrap">
                     The constraint solver creates a snapshot of the current scene 
-                    and iteratively adjusts vertex positions and Bezier control 
+                    and iteratively adjusts vertex positions and Bézier control 
                     points to reduce constraint and continuity violations.
                 </TextBlock>
                 
