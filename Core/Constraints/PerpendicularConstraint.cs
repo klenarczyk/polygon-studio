@@ -15,7 +15,7 @@ public sealed class PerpendicularConstraint : IConstraint
         Guid polygonId2, Guid edgeId2)
     {
         if (edgeId1 == edgeId2)
-            throw new ArgumentException($"Perpendicular constraints require two distinct edges.");
+            throw new ArgumentException("Perpendicular constraints require two distinct edges.");
         
         PolygonId1 = polygonId1;
         EdgeId1 = edgeId1;

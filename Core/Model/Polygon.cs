@@ -60,7 +60,6 @@ public sealed class Polygon
         return edge is not null && _edges.Remove(edge);
     }
     
-    
     internal void RestoreContents(IReadOnlyList<Vertex> vertices, IReadOnlyList<Edge> edges)
     {
         _vertices.Clear();
@@ -69,5 +68,4 @@ public sealed class Polygon
         _edges.Clear();
         _edges.AddRange(edges);
     }
-
 }

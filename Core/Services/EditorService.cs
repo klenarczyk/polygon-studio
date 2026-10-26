@@ -76,21 +76,24 @@ public sealed class EditorService(Scene scene)
         
         var edge1 = polygon.Edges.First(e => e.ToVertexId == vertex.Id);
         var edge2 = polygon.Edges.First(e => e.FromVertexId == vertex.Id);
+
+        return ExecuteTransaction(() =>
+        {
+            var newEdge = new Edge(edge1.FromVertexId, edge2.ToVertexId);
         
-        var newEdge = new Edge(edge1.FromVertexId, edge2.ToVertexId);
+            polygon.AddEdge(newEdge);
         
-        polygon.AddEdge(newEdge);
+            Scene.RemoveConstraintsForEdge(polygonId, edge1.Id);
+            Scene.RemoveConstraintsForEdge(polygonId, edge2.Id);
         
-        Scene.RemoveConstraintsForEdge(polygonId, edge1.Id);
-        Scene.RemoveConstraintsForEdge(polygonId, edge2.Id);
+            polygon.RemoveEdge(edge1.Id);
+            polygon.RemoveEdge(edge2.Id);
+            polygon.RemoveVertex(vertexId);
         
-        polygon.RemoveEdge(edge1.Id);
-        polygon.RemoveEdge(edge2.Id);
-        polygon.RemoveVertex(vertexId);
+            ContinuityHelper.ResetInvalid(Scene);
         
-        ContinuityHelper.ResetInvalid(Scene);
-        
-        return _solver.TrySolveCurrentScene();
+            return _solver.TrySolveCurrentScene();
+        });
     }
     
     public bool SplitEdge(Guid polygonId, Guid edgeId)
@@ -102,25 +105,28 @@ public sealed class EditorService(Scene scene)
         
         var start = polygon.Vertices.First(v => v.Id == edge.FromVertexId).Position;
         var end = polygon.Vertices.First(v => v.Id == edge.ToVertexId).Position;
-        
-        var newVertexPosition = new Point2D((end.X + start.X) / 2, (end.Y + start.Y) / 2);
-        var newVertex = new Vertex(newVertexPosition);
-        
-        polygon.AddVertex(newVertex);
 
-        var edge1 = new Edge(edge.FromVertexId, newVertex.Id);
-        var edge2 = new Edge(newVertex.Id, edge.ToVertexId);
+        return ExecuteTransaction(() =>
+        {
+            var newVertexPosition = new Point2D((end.X + start.X) / 2, (end.Y + start.Y) / 2);
+            var newVertex = new Vertex(newVertexPosition);
         
-        polygon.AddEdge(edge1);
-        polygon.AddEdge(edge2);
+            polygon.AddVertex(newVertex);
+
+            var edge1 = new Edge(edge.FromVertexId, newVertex.Id);
+            var edge2 = new Edge(newVertex.Id, edge.ToVertexId);
         
-        Scene.RemoveConstraintsForEdge(polygonId, edge.Id);
+            polygon.AddEdge(edge1);
+            polygon.AddEdge(edge2);
         
-        polygon.RemoveEdge(edge.Id);
+            Scene.RemoveConstraintsForEdge(polygonId, edge.Id);
+        
+            polygon.RemoveEdge(edge.Id);
   
-        ContinuityHelper.ResetInvalid(Scene);
+            ContinuityHelper.ResetInvalid(Scene);
         
-        return _solver.TrySolveCurrentScene();
+            return _solver.TrySolveCurrentScene();
+        });
     }
     
     public bool SetEdgeGeometry(Guid polygonId, Guid edgeId, Type geometryType)
@@ -150,7 +156,6 @@ public sealed class EditorService(Scene scene)
             ContinuityHelper.UpdateForGeometryChange(polygon, end.Id);
             
             ContinuityHelper.ResetInvalid(Scene);
-            ContinuityHelper.NormalizeArcBulges(polygon);
 
             return _solver.TrySolveCurrentScene();
         });

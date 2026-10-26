@@ -5,158 +5,229 @@ using PolygonStudio.Core.Model.Geometries;
 
 namespace PolygonStudio.Core.Services.Constraints;
 
-public sealed class ConstraintSolver(Scene scene)
+internal sealed class ConstraintSolver(Scene scene)
 {
-    private const double ConstraintWeight = 1000.0;
-    private const double TargetWeight = 1000.0;
-    private const double PreservationWeight = 1;
-    private const double ControlPointPreservationWeight = 0.01;
-    
-    private const double ConstraintTolerance = 1e-5;
-    private const double ContinuityTolerance = 1e-5;
-    private const double TargetTolerance = 1e-4;
+    private const int MaxIterations = 50;
+    private const double ConvergenceEpsilon = 1e-6;
+    private const double Tolerance = 1e-3;
 
-    private readonly LeastSquaresSolver _numericalSolver = new();
-
-    public bool TryMoveTarget(MoveTarget target, Point2D requestedPosition)
+    internal bool TrySolveCurrentScene()
     {
-        var layout = BuildLayout();
+        var state = SolverState.Capture(scene);
+        if (state is null) return false;
 
-        if (!TryGetTargetIndices(target, layout, out int targetX))
+        if (!Relax(state, null, [], []))
             return false;
 
-        var fixedConstraints = ResolveFixedConstraints();
-        if (fixedConstraints is null)
-            return false;
-        
-        var perpendicularConstraints = ResolvePerpendicularConstraints();
-        if (perpendicularConstraints is null)
-            return false;
-
-        var continuityConstraints = ResolveContinuities();
-        if (continuityConstraints is null)
-            return false;
-
-        double[] initial = layout.Initial;
-        double[] candidate;
-
-        try
-        {
-            var res = _numericalSolver.Solve(
-                initial,
-                values => Residuals(
-                    values,
-                    layout,
-                    fixedConstraints,
-                    perpendicularConstraints,
-                    continuityConstraints,
-                    targetX,
-                    requestedPosition
-                )
-            );
-
-            if (!res.Converged)
-            {
-                return false;
-            }
-
-            candidate = res.Variables;
-
-            if (!ValidateCandidate(
-                    candidate,
-                    layout,
-                    fixedConstraints,
-                    perpendicularConstraints,
-                    continuityConstraints,
-                    targetX,
-                    requestedPosition))
-            {
-                return false;
-            }
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-        
-        Commit(candidate, layout);
-        return true;
-    }
-
-    public bool TrySolveCurrentScene()
-    {
-        var layout = BuildLayout();
-
-        var fixedConstraints = ResolveFixedConstraints();
-        if (fixedConstraints is null)
-            return false;
-        
-        var perpendicularConstraints = ResolvePerpendicularConstraints();
-        if (perpendicularConstraints is null)
-            return false;
-
-        var continuityConstraints = ResolveContinuities();
-        if (continuityConstraints is null)
-            return false;
-
-        double[] initial = layout.Initial;
-        double[] candidate;
-
-        try
-        {
-            var res = _numericalSolver.Solve(
-                initial,
-                values => Residuals(
-                    values,
-                    layout,
-                    fixedConstraints,
-                    perpendicularConstraints,
-                    continuityConstraints
-                )
-            );
-
-            if (!res.Converged)
-            {
-                return false;
-            }
-
-            candidate = res.Variables;
-
-            if (!ValidateCandidate(
-                    candidate,
-                    layout,
-                    fixedConstraints,
-                    perpendicularConstraints,
-                    continuityConstraints))
-            {
-                return false;
-            }
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-        
-        Commit(candidate, layout);
+        Commit(state);
         return true;
     }
     
-    private VariableLayout BuildLayout()
+    internal bool TryMoveTarget(MoveTarget target, Point2D requestedPosition)
     {
-        var vertices = new Dictionary<VertexKey, int>();
-        var beziers = new Dictionary<EdgeKey, (int Cp1, int Cp2)>();
-        var arcs = new Dictionary<EdgeKey, int>();
-        var values = new List<double>();
+        var state = SolverState.Capture(scene);
+        if (state is null) return false;
 
+        VertexKey? bfsSeed;
+        var lockedVertices = new HashSet<VertexKey>();
+        var lockedControlPoints = new HashSet<(EdgeKey Edge, int Index)>();
+
+        if (target.Kind == MoveTargetKind.Vertex)
+        {
+            var vertexKey = new VertexKey(target.PolygonId, target.ElementId);
+            if (!state.Vertices.TryGetValue(vertexKey, out var oldPos))
+                return false;
+
+            var delta = new Point2D(requestedPosition.X - oldPos.X, requestedPosition.Y - oldPos.Y);
+            state.Vertices[vertexKey] = requestedPosition;
+            lockedVertices.Add(vertexKey);
+            bfsSeed = vertexKey;
+
+            SolverAdjustments.MoveAdjacentControlPoint(vertexKey, delta, state);
+        }
+        else if (target.Kind == MoveTargetKind.BezierControlPoint)
+        {
+            if (target.ControlPointIndex is not (0 or 1))
+                return false;
+
+            var edgeKey = new EdgeKey(target.PolygonId, target.ElementId);
+            if (!state.Beziers.TryGetValue(edgeKey, out var cp))
+                return false;
+
+            int cpIdx = target.ControlPointIndex;
+            state.Beziers[edgeKey] = cpIdx == 0
+                ? (requestedPosition, cp.Cp2)
+                : (cp.Cp1, requestedPosition);
+
+            lockedControlPoints.Add((edgeKey, cpIdx));
+            
+            var polygon = scene.Polygons.First(p => p.Id == target.PolygonId);
+            var edge = polygon.Edges.First(e => e.Id == target.ElementId);
+
+            var from = new VertexKey(polygon.Id, edge.FromVertexId);
+            var to = new VertexKey(polygon.Id, edge.ToVertexId);
+
+            lockedVertices.Add(from);
+            lockedVertices.Add(to);
+
+            var adjacentVertex = cpIdx == 0 ? from : to;
+            bfsSeed = adjacentVertex;
+        }
+        else return false;
+        
+        if (!Relax(state, bfsSeed, lockedVertices, lockedControlPoints))
+        {
+            // Try locking only the closer endpoint
+            if (target.Kind == MoveTargetKind.BezierControlPoint && lockedVertices.Count > 1)
+            {
+                lockedVertices.Clear();
+                lockedVertices.Add(bfsSeed.Value);
+            
+                if (!Relax(state, bfsSeed, lockedVertices, lockedControlPoints))
+                    return false;
+            }
+            else
+                return false;
+        }
+
+        Commit(state);
+        return true;
+    }
+
+    // ---
+    
+    private bool Relax(
+        SolverState state,
+        VertexKey? bfsSeed,
+        HashSet<VertexKey> lockedVertices,
+        HashSet<(EdgeKey Edge, int Index)> lockedControlPoints)
+    {
+        var ranks = VertexRanking.ComputeVertexRanks(scene, state, bfsSeed);
+        
+        var orderedFixed = state.FixedConstraints
+            .OrderBy(c => Math.Min(
+                VertexRanking.GetRank(ranks, c.From), 
+                VertexRanking.GetRank(ranks, c.To)))
+            .ToList();
+
+        var orderedPerpendicular = state.PerpendicularConstraints
+            .OrderBy(c => Math.Min(
+                Math.Min(VertexRanking.GetRank(ranks, c.From1), VertexRanking.GetRank(ranks, c.To1)),
+                Math.Min(VertexRanking.GetRank(ranks, c.From2), VertexRanking.GetRank(ranks, c.To2))))
+            .ToList();
+
+        var orderedContinuities = state.Continuities
+            .OrderBy(c => VertexRanking.GetRank(ranks, new VertexKey(c.Polygon.Id, c.VertexId)))
+            .ToList();
+
+        for (var i = 0; i < MaxIterations; i++)
+        {
+            var maxDeltaSquared = 0.0;
+            
+            foreach (var fc in orderedFixed)
+            {
+                double d = SolverAdjustments.AdjustFixedLength(fc, state, ranks, lockedVertices);
+                if (d > maxDeltaSquared) maxDeltaSquared = d;
+            }
+            
+            foreach (var pc in orderedPerpendicular)
+            {
+                double d = SolverAdjustments.AdjustPerpendicular(pc, state, ranks, lockedVertices);
+                if (d > maxDeltaSquared) maxDeltaSquared = d;
+            }
+            
+            foreach (var continuity in orderedContinuities)
+            {
+                double d = SolverAdjustments.AdjustBezierContinuity(
+                    continuity, state, 
+                    lockedVertices, lockedControlPoints
+                );
+                if (d > maxDeltaSquared) maxDeltaSquared = d;
+            }
+            
+            foreach (var continuity in orderedContinuities)
+                SolverAdjustments.UpdateArcBulge(continuity, state);
+
+            if (maxDeltaSquared < ConvergenceEpsilon * ConvergenceEpsilon)
+                break;
+        }
+
+        return ValidateState(state);
+    }
+
+    // ---
+    
+    private static bool ValidateState(SolverState state)
+    {
+        foreach (var fc in state.FixedConstraints)
+        {
+            var pointA = state.Vertices[fc.From];
+            var pointB = state.Vertices[fc.To];
+            
+            double len = MathHelper.Distance(pointA, pointB);
+            double tol = Tolerance * Math.Max(1.0, fc.EdgeLength);
+
+            if (Math.Abs(len - fc.EdgeLength) > tol)
+                return false;
+        }
+
+        foreach (var pc in state.PerpendicularConstraints)
+        {
+            var a = state.Vertices[pc.From1];
+            var b = state.Vertices[pc.To1];
+            var c = state.Vertices[pc.From2];
+            var d = state.Vertices[pc.To2];
+
+            var v1 = new Point2D(b.X - a.X, b.Y - a.Y);
+            var v2 = new Point2D(d.X - c.X, d.Y - c.Y);
+
+            double len1 = MathHelper.Length(v1);
+            double len2 = MathHelper.Length(v2);
+
+            if (len1 < 1e-9 || len2 < 1e-9)
+                return false;
+
+            double normalizedDot = Math.Abs(MathHelper.Dot(v1, v2)) / (len1 * len2);
+            if (normalizedDot > Tolerance)
+                return false;
+        }
+
+        foreach (var continuity in state.Continuities)
+        {
+            if (continuity.Type == ContinuityType.G0) continue;
+            
+            var a = MathHelper.EvaluateDerivative(state, continuity.Polygon, continuity.Incoming, true);
+            var b = MathHelper.EvaluateDerivative(state, continuity.Polygon, continuity.Outgoing, false);
+
+            double lenA = MathHelper.Length(a);
+            double lenB = MathHelper.Length(b);
+
+            if (lenA < 1e-9 || lenB < 1e-9)
+                continue;
+
+            if (continuity.Type == ContinuityType.G1)
+            {
+                double normalizedCross = Math.Abs(MathHelper.Cross(a, b)) / (lenA * lenB);
+                if (normalizedCross > Tolerance || MathHelper.Dot(a, b) <= 0)
+                    return false;
+            }
+            else if (continuity.Type == ContinuityType.C1)
+            {
+                double error = MathHelper.Distance(a, b);
+                if (error > Tolerance * Math.Max(1.0, Math.Max(lenA, lenB)))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void Commit(SolverState state)
+    {
         foreach (var polygon in scene.Polygons)
         {
             foreach (var vertex in polygon.Vertices)
-            {
-                int x = Add(vertex.Position.X);
-                Add(vertex.Position.Y);
-
-                vertices.Add(new VertexKey(polygon.Id, vertex.Id), x);
-            }
+                vertex.Position = state.Vertices[new VertexKey(polygon.Id, vertex.Id)];
 
             foreach (var edge in polygon.Edges)
             {
@@ -164,494 +235,16 @@ public sealed class ConstraintSolver(Scene scene)
 
                 switch (edge.Geometry)
                 {
-                    case CubicBezierGeometry bezier:
-                    {
-                        int cp1 = Add(bezier.ControlPoint1.X);
-                        Add(bezier.ControlPoint1.Y);
-
-                        int cp2 = Add(bezier.ControlPoint2.X);
-                        Add(bezier.ControlPoint2.Y);
-
-                        beziers.Add(key, (cp1, cp2));
+                    case CubicBezierGeometry:
+                        var (cp1, cp2) = state.Beziers[key];
+                        edge.Geometry = new CubicBezierGeometry(cp1, cp2);
                         break;
-                    }
-
-                    case CircularArcGeometry arc:
-                        arcs.Add(key, Add(arc.Bulge));
+                    
+                    case CircularArcGeometry:
+                        edge.Geometry = new CircularArcGeometry(state.Arcs[key]);
                         break;
                 }
             }
         }
-
-        return new VariableLayout(vertices, beziers, arcs, [.. values]);
-
-        // ---
-        
-        int Add(double value)
-        {
-            values.Add(value);
-            return values.Count - 1;
-        }
     }
-
-    private static bool TryGetTargetIndices(MoveTarget target, VariableLayout layout, out int xIndex)
-    {
-        xIndex = -1;
-
-        if (target.Kind == MoveTargetKind.Vertex)
-        {
-            var key = new VertexKey(target.PolygonId, target.ElementId);
-            return layout.Vertices.TryGetValue(key, out xIndex);
-        }
-
-        if (target.Kind == MoveTargetKind.BezierControlPoint)
-        {
-            if (target.ControlPointIndex is not (0 or 1))
-                return false;
-
-            var key = new EdgeKey(target.PolygonId, target.ElementId);
-
-            if (!layout.Beziers.TryGetValue(key, out var indices))
-                return false;
-
-            xIndex = target.ControlPointIndex == 0
-                ? indices.Cp1
-                : indices.Cp2;
-
-            return true;
-        }
-
-        return false;
-    }
-    
-    private List<ResolvedFixedConstraint>? ResolveFixedConstraints()
-    {
-        var result = new List<ResolvedFixedConstraint>();
-
-        foreach (var constraint in scene.Constraints.OfType<FixedLengthConstraint>())
-        {
-            var polygon = scene.Polygons.FirstOrDefault(p => p.Id == constraint.PolygonId);
-            var edge = polygon?.Edges.FirstOrDefault(e => e.Id == constraint.EdgeId);
-
-            if (polygon is null || edge is null)
-                return null;
-
-            var from = polygon.Vertices.FirstOrDefault(v => v.Id == edge.FromVertexId);
-            var to = polygon.Vertices.FirstOrDefault(v => v.Id == edge.ToVertexId);
-
-            if (from is null || to is null)
-                return null;
-
-            result.Add(new ResolvedFixedConstraint(
-                new VertexKey(polygon.Id, from.Id),
-                new VertexKey(polygon.Id, to.Id),
-                constraint.Length)
-            );
-        }
-
-        return result;
-    }
-    
-    private List<ResolvedPerpendicularConstraint>? ResolvePerpendicularConstraints()
-    {
-        var result = new List<ResolvedPerpendicularConstraint>();
-
-        foreach (var constraint in scene.Constraints.OfType<PerpendicularConstraint>())
-        {
-            var polygon1 = scene.Polygons.FirstOrDefault(p => p.Id == constraint.PolygonId1);
-            var polygon2 = scene.Polygons.FirstOrDefault(p => p.Id == constraint.PolygonId2);
-            
-            var edge1 = polygon1?.Edges.FirstOrDefault(e => e.Id == constraint.EdgeId1);
-            var edge2 = polygon2?.Edges.FirstOrDefault(e => e.Id == constraint.EdgeId2);
-
-            if (polygon1 is null || polygon2 is null || edge1 is null || edge2 is null)
-                return null;
-
-            if (edge1.Geometry is not LineGeometry || edge2.Geometry is not LineGeometry)
-                return null;
-            
-            var from1 = polygon1.Vertices.FirstOrDefault(v => v.Id == edge1.FromVertexId);
-            var to1 = polygon1.Vertices.FirstOrDefault(v => v.Id == edge1.ToVertexId);
-            
-            var from2 = polygon2.Vertices.FirstOrDefault(v => v.Id == edge2.FromVertexId);
-            var to2 = polygon2.Vertices.FirstOrDefault(v => v.Id == edge2.ToVertexId);
-
-            if (from1 is null || to1 is null || from2 is null || to2 is null)
-                return null;
-
-            result.Add(new ResolvedPerpendicularConstraint(
-                new VertexKey(polygon1.Id, from1.Id),
-                new VertexKey(polygon1.Id, to1.Id),
-                new VertexKey(polygon2.Id, from2.Id),
-                new VertexKey(polygon2.Id, to2.Id))
-            );
-        }
-
-        return result;
-    }
-
-    private List<ResolvedContinuity>? ResolveContinuities()
-    {
-        var result = new List<ResolvedContinuity>();
-
-        foreach (var polygon in scene.Polygons)
-        foreach (var vertex in polygon.Vertices)
-        {
-            if (vertex.Continuity == ContinuityType.G0)
-                continue;
-
-            if (!ContinuityHelper.CanApply(polygon, vertex.Id, vertex.Continuity))
-                return null;
-
-            if (!ContinuityHelper.TryResolveAdjacentEdges(
-                    polygon, vertex.Id, 
-                    out var incoming, out var outgoing))
-            {
-                return null;
-            }
-            
-            result.Add(new ResolvedContinuity(
-                polygon,
-                vertex.Continuity,
-                incoming!, outgoing!)
-            );
-        }
-        
-        return result;
-    }
-
-    private static bool ValidateCandidate(
-        double[] values,
-        VariableLayout layout,
-        IReadOnlyList<ResolvedFixedConstraint> fixedConstraints,
-        IReadOnlyList<ResolvedPerpendicularConstraint> perpendicularConstraints,
-        IReadOnlyList<ResolvedContinuity> continuities,
-        int? targetX = null,
-        Point2D? requestedPosition = null)
-    {
-        if (values.Length != layout.Initial.Length)
-            return false;
-
-        if (targetX is not null && requestedPosition is { } pos)
-        {
-            double targetDx = values[targetX.Value] - pos.X;
-            double targetDy = values[targetX.Value + 1] - pos.Y;
-
-            if (targetDx * targetDx + targetDy * targetDy > TargetTolerance * TargetTolerance)
-                return false;
-        }
-        
-        foreach (var constraint in fixedConstraints)
-        {
-            int from = layout.Vertices[constraint.FromKey];
-            int to = layout.Vertices[constraint.ToKey];
-
-            double dx = values[to] - values[from];
-            double dy = values[to + 1] - values[from + 1];
-            double length = Math.Sqrt(dx * dx + dy * dy);
-
-            double tolerance = ConstraintTolerance * Math.Max(1.0, constraint.EdgeLength);
-
-            if (Math.Abs(length - constraint.EdgeLength) > tolerance)
-                return false;
-        }
-
-        foreach (var constraint in perpendicularConstraints)
-        {
-            int a = layout.Vertices[constraint.From1];
-            int b = layout.Vertices[constraint.To1];
-            int c = layout.Vertices[constraint.From2];
-            int d = layout.Vertices[constraint.To2];
-
-            var vecA = new Point2D(
-                values[b] - values[a], 
-                values[b + 1] - values[a + 1]
-            );
-
-            var vecB = new Point2D(
-                values[d] - values[c], 
-                values[d + 1] - values[c + 1]
-            );
-
-            double lengthA = Length(vecA);
-            double lengthB = Length(vecB);
-
-            if (lengthA < 1e-12 || lengthB < 1e-12)
-                continue;
-
-            double normalizedDot = Dot(vecA, vecB) / (lengthA * lengthB);
-
-            if (Math.Abs(normalizedDot) > ConstraintTolerance)
-                return false;
-        }
-        
-        foreach (var continuity in continuities)
-        {
-            var a = Derivative(
-                values, layout, continuity.Polygon,
-                continuity.Incoming, true
-            );
-
-            var b = Derivative(
-                values, layout, continuity.Polygon,
-                continuity.Outgoing, false
-            );
-
-            double la = Length(a);
-            double lb = Length(b);
-
-            if (la < 1e-12 || lb < 1e-12)
-                continue;
-
-            if (continuity.Type == ContinuityType.G1)
-            {
-                double normalizedCross = Math.Abs(Cross(a, b)) / (la * lb);
-
-                if (normalizedCross > ContinuityTolerance || Dot(a, b) <= 0)
-                    return false;
-            }
-            else if (continuity.Type == ContinuityType.C1)
-            {
-                double error = Length(new Point2D(a.X - b.X, a.Y - b.Y));
-
-                if (error > ContinuityTolerance * Math.Max(1.0, Math.Max(la, lb)))
-                    return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static double[] Residuals(
-        double[] values,
-        VariableLayout layout,
-        IReadOnlyList<ResolvedFixedConstraint> fixedConstraints,
-        IReadOnlyList<ResolvedPerpendicularConstraint> perpendicularConstraints,
-        IReadOnlyList<ResolvedContinuity> continuities,
-        int? targetX = null,
-        Point2D? requestedPosition = null)
-    {
-        var residuals = new List<double>();
-
-        foreach (var constraint in fixedConstraints)
-        {
-            int from = layout.Vertices[constraint.FromKey];
-            int to = layout.Vertices[constraint.ToKey];
-
-            double dx = values[to] - values[from];
-            double dy = values[to + 1] - values[from + 1];
-            
-            double length = Math.Sqrt(dx * dx + dy * dy);
-            
-            residuals.Add(ConstraintWeight * (length - constraint.EdgeLength));
-        }
-        
-        foreach (var constraint in perpendicularConstraints)
-        {
-            int a = layout.Vertices[constraint.From1];
-            int b = layout.Vertices[constraint.To1];
-            int c = layout.Vertices[constraint.From2];
-            int d = layout.Vertices[constraint.To2];
-
-            var vecA = new Point2D(
-                values[b] - values[a], 
-                values[b + 1] - values[a + 1]
-            );
-
-            var vecB = new Point2D(
-                values[d] - values[c], 
-                values[d + 1] - values[c + 1]
-            );
-
-            double lengthA = Length(vecA);
-            double lengthB = Length(vecB);
-
-            if (lengthA < 1e-12 || lengthB < 1e-12)
-                continue;
-            
-            double normalizedDot = Dot(vecA, vecB) / (lengthA * lengthB);
-            residuals.Add(ConstraintWeight * normalizedDot);
-        }
-        
-        foreach (var continuity in continuities)
-        {
-            var incoming = Derivative(
-                values, layout, continuity.Polygon,
-                continuity.Incoming, true
-            );
-
-            var outgoing = Derivative(
-                values, layout, continuity.Polygon,
-                continuity.Outgoing, false
-            );
-
-            if (continuity.Type == ContinuityType.G1)
-            {
-                double aLength = Length(incoming);
-                double bLength = Length(outgoing);
-
-                if (aLength < 1e-12 || bLength < 1e-12)
-                {
-                    residuals.Add(ConstraintWeight);
-                    residuals.Add(ConstraintWeight);
-                    continue;
-                }
-                
-                double ax = incoming.X / aLength;
-                double ay = incoming.Y / aLength;
-                double bx = outgoing.X / bLength;
-                double by = outgoing.Y / bLength;
-
-                residuals.Add(ConstraintWeight * (ax - bx));
-                residuals.Add(ConstraintWeight * (ay - by));
-            }
-            else if (continuity.Type == ContinuityType.C1)
-            {
-                residuals.Add(ConstraintWeight * (incoming.X - outgoing.X));
-                residuals.Add(ConstraintWeight * (incoming.Y - outgoing.Y));
-            }
-        }
-        
-        if (targetX is not null && requestedPosition is { } pos)
-        {
-            residuals.Add(TargetWeight * (values[targetX.Value] - pos.X));
-            residuals.Add(TargetWeight * (values[targetX.Value + 1] - pos.Y));
-        }
-        
-        for (var i = 0; i < values.Length; i++)
-        {
-            if (targetX is not null && (i == targetX.Value || i == targetX.Value + 1))
-                continue;
-
-            bool isControlPoint = layout.Beziers.Values.Any(cp =>
-                i == cp.Cp1 || 
-                i == cp.Cp1 + 1 || 
-                i == cp.Cp2 || 
-                i == cp.Cp2 + 1
-            );
-            
-            double weight = isControlPoint
-                ? ControlPointPreservationWeight
-                : PreservationWeight;
-
-            residuals.Add(weight * (values[i] - layout.Initial[i]));
-        }
-        
-        return [.. residuals];
-    }
-
-    private void Commit(double[] values, VariableLayout layout)
-    {
-        foreach (var polygon in scene.Polygons)
-        {
-            foreach (var vertex in polygon.Vertices)
-            {
-                int i = layout.Vertices[new VertexKey(polygon.Id, vertex.Id)];
-                vertex.Position = new Point2D(values[i], values[i + 1]);
-            }
-
-            foreach (var edge in polygon.Edges)
-            {
-                var key = new EdgeKey(polygon.Id, edge.Id);
-
-                if (edge.Geometry is CubicBezierGeometry)
-                {
-                    var indices = layout.Beziers[key];
-
-                    edge.Geometry = new CubicBezierGeometry(
-                            new Point2D(values[indices.Cp1], values[indices.Cp1 + 1]), 
-                            new Point2D(values[indices.Cp2], values[indices.Cp2 + 1])
-                        );
-                }
-                else if (edge.Geometry is CircularArcGeometry)
-                {
-                    edge.Geometry = new CircularArcGeometry(values[layout.Arcs[key]]);
-                }
-            }
-        }
-    }
-    
-    // ---
-    
-    private static Point2D Derivative(
-        double[] values,
-        VariableLayout layout,
-        Polygon polygon, Edge edge,
-        bool atEnd)
-    {
-        int from = layout.Vertices[new VertexKey(polygon.Id, edge.FromVertexId)];
-        int to = layout.Vertices[new VertexKey(polygon.Id, edge.ToVertexId)];
-
-        var p0 = new Point2D(values[from], values[from + 1]);
-        var p3 = new Point2D(values[to], values[to + 1]);
-
-        switch (edge.Geometry)
-        {
-            case LineGeometry:
-                return new Point2D(p3.X - p0.X, p3.Y - p0.Y);
-
-            case CubicBezierGeometry:
-            {
-                var indices = layout.Beziers[new EdgeKey(polygon.Id, edge.Id)];
-
-                var cp1 = new Point2D(values[indices.Cp1], values[indices.Cp1 + 1]);
-                var cp2 = new Point2D(values[indices.Cp2], values[indices.Cp2 + 1]);
-
-                return atEnd
-                    ? new Point2D(3 * (p3.X - cp2.X), 3 * (p3.Y - cp2.Y))
-                    : new Point2D(3 * (cp1.X - p0.X), 3 * (cp1.Y - p0.Y));
-            }
-
-            case CircularArcGeometry:
-            {
-                double bulge = values[layout.Arcs[new EdgeKey(polygon.Id, edge.Id)]];
-
-                double chordAngle = Math.Atan2(p3.Y - p0.Y, p3.X - p0.X);
-
-                double tangentAngle = chordAngle + (atEnd ? 2.0 : -2.0) * Math.Atan(bulge);
-
-                return new Point2D(
-                    Math.Cos(tangentAngle),
-                    Math.Sin(tangentAngle)
-                );
-            }
-
-            default:
-                throw new NotSupportedException($"Unsupported edge geometry: {edge.Geometry.GetType().Name}");
-        }
-    }
-
-    private static double Length(Point2D p) => Math.Sqrt(p.X * p.X + p.Y * p.Y);
-
-    private static double Dot(Point2D a, Point2D b) => a.X * b.X + a.Y * b.Y;
-    
-    private static double Cross(Point2D a, Point2D b) => a.X * b.Y - a.Y * b.X;
-    
-    // ---
-    
-    private readonly record struct VertexKey(Guid PolygonId, Guid VertexId);
-    private readonly record struct EdgeKey(Guid PolygonId, Guid EdgeId);
-
-    private sealed record VariableLayout(
-        Dictionary<VertexKey, int> Vertices,
-        Dictionary<EdgeKey, (int Cp1, int Cp2)> Beziers,
-        Dictionary<EdgeKey, int> Arcs,
-        double[] Initial
-    );
-    
-    private sealed record ResolvedFixedConstraint(
-        VertexKey FromKey, VertexKey ToKey,
-        double EdgeLength
-    );
-
-    private sealed record ResolvedPerpendicularConstraint(
-        VertexKey From1, VertexKey To1,
-        VertexKey From2, VertexKey To2
-    );
-
-    private sealed record ResolvedContinuity(
-        Polygon Polygon,
-        ContinuityType Type,
-        Edge Incoming, Edge Outgoing
-    );
 }
