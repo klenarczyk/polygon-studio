@@ -122,8 +122,7 @@
             <StackPanel Spacing="8">
                 <TextBlock TextWrapping="Wrap">
                     - Line segments can be drawn using either Avalonia or
-                    a custom Bresenham algorithm implementation (pixels are
-                    represented by 1x1 squares).
+                    a custom Bresenham algorithm implementation.
                 </TextBlock>
                 
                 <TextBlock TextWrapping="Wrap">
