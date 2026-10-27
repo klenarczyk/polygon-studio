@@ -21,11 +21,11 @@ public static class PolygonCanvasRenderer
     private const double ConstraintMarkerSpacing = 30.0;
     
     private static readonly Pen EdgePen = new(Brushes.Black, 2);
-    private static readonly Pen SelectedEdgePen = new(Brushes.LightSeaGreen, 2);
+    private static readonly Pen SelectedEdgePen = new(Brushes.LightBlue, 2);
     private static readonly Pen VertexPen = new(Brushes.Black, 2);
     private static readonly Pen ControlPen = new(Brushes.SlateGray, 1, DashStyle.Dash);
     private static readonly Pen FixedLengthPen = new(Brushes.LightCoral, 1.5);
-    private static readonly Pen PerpendicularPen = new Pen(Brushes.RoyalBlue, 1.5);
+    private static readonly Pen PerpendicularPen = new(Brushes.RoyalBlue, 1.5);
     
     public static void Draw(
         DrawingContext context,
@@ -61,7 +61,7 @@ public static class PolygonCanvasRenderer
                 (dragState.Target == DragTarget.Vertex && dragState.VertexId == vertex.Id);
 
             var brush = isSelected
-                ? Brushes.LightSeaGreen
+                ? Brushes.LightBlue
                 : Brushes.White;
 
             context.DrawEllipse(
